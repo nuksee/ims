@@ -46,3 +46,9 @@ dotnet_diagnostic.CA2012.severity = error       # use ValueTask correctly
 dotnet_diagnostic.IDE0058.severity = none       # unused expression value
 dotnet_diagnostic.CA1848.severity = none        # LoggerMessage delegates
 dotnet_diagnostic.CA1031.severity = none        # broad catch — needed at UI/host boundaries
+
+# CA1720 flags identifiers containing a type name. InformixDbType members are
+# named after Informix's own SQL types — Integer, Decimal, Char, Float — and
+# renaming them to satisfy the analyzer would make the enum less faithful to the
+# server than PR-8.2 and PR-8.3 want it to be.
+dotnet_diagnostic.CA1720.severity = none

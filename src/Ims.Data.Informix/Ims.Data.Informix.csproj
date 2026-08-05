@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The one project that knows how IMS reaches Informix.
+
+    DEC-4 permits "the IBM Informix .NET provider or ODBC, via the Informix
+    Client SDK". The bundled managed provider (IBM.Data.Informix.dll) ships
+    only for .NET Framework 2.0 and cannot load in .NET 9, so this takes the
+    ODBC branch over the CSDK's registered 64-bit driver, which keeps the
+    native SQLI protocol rather than going through DRDA.
+
+    Windows-targeted because CSDK discovery reads the registry (PR-1.8).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <RootNamespace>Ims.Data.Informix</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Data.Odbc" />
+    <PackageReference Include="Microsoft.Win32.Registry" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ims.Core\Ims.Core.csproj" />
+  </ItemGroup>
+
+</Project>
