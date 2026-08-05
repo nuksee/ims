@@ -1,0 +1,12 @@
+# Test projects only.
+
+[*.cs]
+# CA1707 forbids underscores in member names. Test method names are sentences —
+# "Null_empty_string_and_zero_are_all_distinguishable" is the assertion, and it is
+# what a failing run prints. Readability wins here.
+dotnet_diagnostic.CA1707.severity = none
+
+# Tests deliberately construct odd inputs and assert on them.
+dotnet_diagnostic.CA1861.severity = none        # constant arrays as arguments
+dotnet_diagnostic.CA1305.severity = none        # IFormatProvider in test data
+dotnet_diagnostic.CA5394.severity = none        # non-cryptographic randomness

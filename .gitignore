@@ -47,3 +47,6 @@ logs/
 ## Manager (DEC-9); connection stores and query history are per-user (DEC-8).
 *.ims.local.json
 local.settings.json
+
+## Claude Code — per-user overrides only; .claude/settings.json is committed.
+.claude/settings.local.json
