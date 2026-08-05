@@ -1,0 +1,35 @@
+<Project>
+
+  <!--
+    Central package version management. One place to see every third-party
+    dependency IMS takes — which is also how the PR-6.5 "no telemetry" guard
+    test stays reviewable by a human.
+  -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <CentralPackageTransitivePinningEnabled>true</CentralPackageTransitivePinningEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Data access. DEC-4, resolved to the ODBC branch: the CSDK's bundled
+         IBM.Data.Informix.dll targets .NET Framework 2.0 and cannot load in .NET 9. -->
+    <PackageVersion Include="System.Data.Odbc" Version="9.0.0" />
+
+    <!-- Hosting, DI, logging, configuration. NFR-10. -->
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Hosting" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="9.0.0" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+
+    <!-- Windows Credential Manager + registry access. DEC-9, PR-1.4, PR-1.8. -->
+    <PackageVersion Include="Microsoft.Win32.Registry" Version="5.0.0" />
+
+    <!-- Test stack. -->
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageVersion Include="xunit" Version="2.9.2" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="2.8.2" />
+    <PackageVersion Include="FluentAssertions" Version="6.12.2" />
+  </ItemGroup>
+
+</Project>

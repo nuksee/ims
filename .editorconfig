@@ -1,0 +1,48 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+
+[*.{json,yml,yaml,csproj,props,targets,xaml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.cs]
+# Usings
+dotnet_sort_system_directives_first = true
+csharp_using_directive_placement = outside_namespace:warning
+
+# Modern C# style
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_prefer_braces = true:warning
+csharp_style_prefer_pattern_matching = true:suggestion
+
+# Naming
+dotnet_naming_rule.private_fields_underscore.severity = warning
+dotnet_naming_rule.private_fields_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_underscore.style = underscore_camel
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_style.underscore_camel.capitalization = camel_case
+
+# PR-8.5 / NFR-1: responsiveness is a functional requirement, so the analyzers
+# that catch blocking and un-cancellable async code are errors, not suggestions.
+dotnet_diagnostic.CA2007.severity = none        # ConfigureAwait handled per-project below
+dotnet_diagnostic.CA2016.severity = error       # forward CancellationToken
+dotnet_diagnostic.CA1849.severity = error       # don't call sync methods in async context
+dotnet_diagnostic.CA2012.severity = error       # use ValueTask correctly
+
+# Style rules we do not want failing the build
+dotnet_diagnostic.IDE0058.severity = none       # unused expression value
+dotnet_diagnostic.CA1848.severity = none        # LoggerMessage delegates
+dotnet_diagnostic.CA1031.severity = none        # broad catch — needed at UI/host boundaries

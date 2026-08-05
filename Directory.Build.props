@@ -1,0 +1,35 @@
+<Project>
+
+  <!--
+    Shared build settings for every project in IMS.
+
+    TreatWarningsAsErrors is deliberate: this is a part-time solo build (DEC-11),
+    so the compiler is the only reviewer there is.
+  -->
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+
+    <!-- NFR-9: Informix locales, code sets and collations must behave correctly.
+         Invariant globalisation would silently break collation and casing. -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+
+    <!-- PR-6.5: no telemetry, including the SDK's own first-run message. -->
+    <DotNetCliToolReferenceSuppressed>true</DotNetCliToolReferenceSuppressed>
+
+        <Product>Informix Management Studio</Product>
+    <Version>0.1.0</Version>
+    <NeutralLanguage>en</NeutralLanguage>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)' == 'Release'">
+    <DebugType>portable</DebugType>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+</Project>
