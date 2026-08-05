@@ -4,5 +4,51 @@
         Title="Informix Management Studio"
         Height="720" Width="1180"
         WindowStartupLocation="CenterScreen">
-  <Grid />
+
+  <!--
+    The Slice 0 shell. Deliberately near-empty: Slice 1 (connect and query) is
+    what makes this window worth opening, and PR-8.4 says a half-implemented
+    capability is worse than an absent one.
+  -->
+
+  <DockPanel>
+    <Menu DockPanel.Dock="Top">
+      <MenuItem Header="_File">
+        <MenuItem x:Name="ExitMenuItem" Header="E_xit" Click="OnExit" />
+      </MenuItem>
+      <MenuItem Header="_Help">
+        <MenuItem x:Name="AboutMenuItem" Header="_About IMS" Click="OnAbout" />
+      </MenuItem>
+    </Menu>
+
+    <StatusBar DockPanel.Dock="Bottom">
+      <StatusBarItem>
+        <TextBlock x:Name="CsdkStatusText"
+                   AutomationProperties.Name="Client SDK status" />
+      </StatusBarItem>
+      <Separator />
+      <StatusBarItem>
+        <TextBlock x:Name="ConnectionStatusText"
+                   Text="Not connected"
+                   AutomationProperties.Name="Connection status" />
+      </StatusBarItem>
+    </StatusBar>
+
+    <Grid>
+      <StackPanel VerticalAlignment="Center"
+                  HorizontalAlignment="Center"
+                  MaxWidth="560">
+        <TextBlock Style="{StaticResource HeadingText}"
+                   HorizontalAlignment="Center"
+                   Text="Informix Management Studio" />
+        <TextBlock Style="{StaticResource BodyText}"
+                   Margin="0,12,0,0"
+                   TextAlignment="Center"
+                   Text="Slice 0 — foundation. The provider layer, logging and Client SDK detection are in place." />
+        <TextBlock Style="{StaticResource BodyText}"
+                   TextAlignment="Center"
+                   Text="Slice 1 adds connection management, the SQL editor and the result grid." />
+      </StackPanel>
+    </Grid>
+  </DockPanel>
 </Window>

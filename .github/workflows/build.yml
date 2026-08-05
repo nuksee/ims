@@ -1,0 +1,40 @@
+name: build
+
+# IMS is a Windows desktop application (DEC-3, NFR-5), so CI runs on Windows.
+# No job here connects to an Informix instance: PR-6.2 and RSK-5 both say IMS
+# talks to a server only when a person asks it to, and CI is not a person.
+
+on:
+  push:
+    branches: [main, 'slice-*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore ims.sln
+
+      - name: Build
+        # TreatWarningsAsErrors is on, so this is also the code-quality gate.
+        run: dotnet build ims.sln --configuration Release --no-restore
+
+      - name: Test
+        # The Client SDK is absent on the runner. Every test is written to pass
+        # either way — CsdkLocator's tests assert the result is coherent, not that
+        # the SDK is present, which is exactly the PR-1.8 behaviour that matters.
+        run: dotnet test ims.sln --configuration Release --no-build --verbosity normal

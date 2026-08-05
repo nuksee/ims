@@ -27,4 +27,10 @@
     <ProjectReference Include="..\Ims.Core\Ims.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- CsdkLocator.Evaluate is internal so its failure branches can be tested on a
+         machine where the SDK is installed correctly (PR-1.8). -->
+    <InternalsVisibleTo Include="Ims.Data.Informix.Tests" />
+  </ItemGroup>
+
 </Project>

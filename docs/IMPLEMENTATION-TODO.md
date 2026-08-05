@@ -8,19 +8,35 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` done · **M/S/C** = PRD 
 
 ---
 
-## Slice 0 — Foundation **[infra]**
+## Slice 0 — Foundation **[infra]** — *complete except where noted*
 
 Not in the PRD. Prerequisite for everything below; keep it thin — DEC-12 says every slice
 must be usable alone, and this one isn't, so it should be measured in days not weeks.
 
-- [ ] Solution scaffold: `Ims.App` (WPF), `Ims.Core` (domain/services), `Ims.Data` (provider access), `Ims.Tests` — DEC-3
-- [ ] Pin target framework and confirm it is installed on target workstations — NFR-5
-- [ ] **Spike: Informix provider choice.** Prove `IBM.Data.Db2` / `IBM.Data.Informix` vs ODBC against a live 12.10 *and* 14.10 instance before committing. Decide on: cancellation support, `DATETIME`/`INTERVAL`/`MONEY` fidelity, streaming reads, error-code detail — DEC-4, DEC-5, RSK-9
-- [ ] Decide async/threading model up front: no server call on the UI thread, ever — NFR-1, PR-8.5
-- [ ] Structured local logging with a credential/result-data redaction filter baked in from day one — NFR-10, PR-6.3
-- [ ] Confirm no telemetry package enters the dependency graph; add a check — PR-6.5
-- [ ] CI build + test on push
-- [ ] Secure DEP-2 (non-prod 12.10 and 14.10 instances) and DEP-3 (a realistic-size schema for NFR-2)
+- [x] Solution scaffold: `Ims.App` (WPF), `Ims.Core` (domain/abstractions), `Ims.Data.Informix` (provider), `tools/Ims.SmokeTest`, two test projects — DEC-3
+- [x] Pin target framework: `net9.0-windows`, SDK 9.0.311 via `global.json`. `Ims.Core` stays plain `net9.0` with no Windows dependency — NFR-5
+- [x] **Provider decision made.** The CSDK's bundled `IBM.Data.Informix.dll` ships only for .NET Framework 2.0 (`bin\netf20`) and cannot load in .NET 9, so DEC-4 resolves to its **ODBC** branch: `System.Data.Odbc` over the registered `IBM INFORMIX ODBC DRIVER (64-bit)` (CSDK 4.10.FC1DE), keeping the native SQLI protocol — DEC-3, DEC-4
+- [x] Async/threading model: every provider call async and cancellable; `ServerCallGuard` throws if a round trip is attempted on the dispatcher thread — NFR-1, PR-8.5
+- [x] Local logging via `FileLoggerProvider`, wrapped in `RedactingLoggerProvider` so PR-6.3 holds at one boundary rather than at every call site — NFR-10, PR-6.3
+- [x] `DependencyPolicyTests` fails the build if a telemetry package or a redistributed IBM client library enters the graph — PR-6.5, DEC-10
+- [x] CI: GitHub Actions, `windows-latest`, Release build + test on push. No CI job connects to a server
+- [ ] **Run `Ims.SmokeTest` against non-prod 12.10 and 14.10** — the spike is written but unrun; see "Blocked on a live server" below — DEP-2, RSK-9
+- [ ] Secure DEP-3 (a realistic-size schema for NFR-2)
+
+### Blocked on a live server
+
+Everything below is implemented and unit-tested, but its *behaviour against Informix* is
+unverified because no non-production instance was available. `tools/Ims.SmokeTest` exists
+precisely to settle these; run it once against 12.10 and once against 14.10.
+
+| Question | Requirement | Why it matters |
+|---|---|---|
+| Can `OdbcCommand.Cancel()` stop a statement without losing the session? | PR-3.5 | If not, Slice 1 needs a second connection issuing an administrative cancel |
+| Does the driver stream, or buffer the whole result set? | PR-4.2, RSK-6 | If it buffers, the streaming contract cannot be honoured through ODBC |
+| Does DATETIME arrive with enough information to recover its qualifier? | PR-4.5 | The mapper handles the catalogue encoding; the ODBC path is untested |
+| Are SQLCODE *and* the ISAM error both retrievable? | PR-3.6 | If ODBC surfaces only one, PR-3.6 needs another route |
+| Is `SECURITY=ssl` the right keyword for encrypted connections? | PR-1.10 | Emitted but unverified — flagged in the code |
+| Can an ordinary developer read `sysmaster`? | **Q-1** | Gates Slice 3 entirely |
 
 ---
 

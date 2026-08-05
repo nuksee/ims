@@ -18,6 +18,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.Data.Odbc" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Ims.Core\Ims.Core.csproj" />
     <ProjectReference Include="..\..\src\Ims.Data.Informix\Ims.Data.Informix.csproj" />
   </ItemGroup>
