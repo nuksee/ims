@@ -39,6 +39,18 @@ public sealed class InformixOdbcSession : IInformixSession
     private SessionState _state = SessionState.Closed;
     private bool _disposed;
 
+    /// <summary>
+    /// The streaming result currently holding this connection's cursor, if any.
+    /// </summary>
+    /// <remarks>
+    /// A connection has one cursor, so a new statement cannot run while an old
+    /// result is still open. The session closes it rather than waiting for the
+    /// caller to — an earlier design gated on the caller disposing the result, and
+    /// a caller that never did left the session permanently unusable. Ownership of
+    /// a scarce resource belongs with whoever can guarantee its release.
+    /// </remarks>
+    private IStatementResult? _openResult;
+
     public InformixOdbcSession(
         ConnectionDescriptor descriptor,
         ICredentialResolver credentials,
@@ -135,11 +147,17 @@ public sealed class InformixOdbcSession : IInformixSession
 
             SqlStatement statement = statements[index];
 
+            // Only the final statement may stream. A connection holds one cursor at
+            // a time, so an earlier SELECT has to be read and closed before the next
+            // statement can execute at all — see BufferedStatementResult.
+            bool isLast = index == statements.Count - 1;
+
             StatementOutcome outcome = await ExecuteOneAsync(
                 statement.Text,
                 index,
                 statement.Offset,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                bufferResult: !isLast).ConfigureAwait(false);
 
             yield return outcome;
 
@@ -259,6 +277,12 @@ public sealed class InformixOdbcSession : IInformixSession
 
         _disposed = true;
 
+        if (_openResult is { } open)
+        {
+            _openResult = null;
+            await open.DisposeAsync().ConfigureAwait(false);
+        }
+
         if (_transaction is not null)
         {
             // An open transaction at dispose is rolled back, never committed by
@@ -293,12 +317,21 @@ public sealed class InformixOdbcSession : IInformixSession
         string sql,
         int index,
         int scriptOffset,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool bufferResult = false)
     {
         OdbcConnection connection = RequireOpenConnection();
 
         // One statement at a time per session, as Informix itself expects.
         await _executionGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+
+        // Close whatever still holds the cursor. Without this, the second execute on
+        // a session blocks forever behind a result the caller has not disposed.
+        if (_openResult is { } previous)
+        {
+            _openResult = null;
+            await previous.DisposeAsync().ConfigureAwait(false);
+        }
 
         var stopwatch = Stopwatch.StartNew();
         var command = new OdbcCommand(sql, connection, _transaction) { CommandTimeout = 0 };
@@ -323,8 +356,8 @@ public sealed class InformixOdbcSession : IInformixSession
         _runningCommand = command;
         SetState(SessionState.Executing);
 
-        // A row set keeps the command alive until the caller drains it; everything
-        // else finishes here. Tracked explicitly so the gate is released exactly once.
+        // A streaming row set keeps the command and reader alive past this method;
+        // everything else is finished with them here.
         var resultOwnsCommand = false;
 
         try
@@ -336,19 +369,54 @@ public sealed class InformixOdbcSession : IInformixSession
                     .ConfigureAwait(false);
 
                 stopwatch.Stop();
+
+                IStatementResult streaming = OdbcStatementResult.Create(command, reader);
+
+                if (bufferResult)
+                {
+                    // Not the last statement in the script. The cursor has to be
+                    // released before the next statement can execute at all, so the
+                    // rows are read now, up to a cap, and the reader closed.
+                    BufferedStatementResult buffered = await BufferedStatementResult
+                        .CreateAsync(streaming, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    if (buffered.WasTruncated)
+                    {
+                        _logger.LogInformation(
+                            "Statement {Index} returned more than {Cap} rows; the result was "
+                            + "truncated so the rest of the script could run.",
+                            index,
+                            BufferedStatementResult.MaximumBufferedRows);
+                    }
+
+                    return new StatementOutcome
+                    {
+                        Index = index,
+                        Sql = sql,
+                        ScriptOffset = scriptOffset,
+                        Kind = StatementResultKind.RowSet,
+                        Result = buffered,
+                        Elapsed = stopwatch.Elapsed,
+                        TransactionState = TransactionState,
+                    };
+                }
+
                 resultOwnsCommand = true;
 
-                // Ownership of the command and reader passes to the result, which
-                // disposes both. The gate is released when the result is drained.
+                // The session, not the caller, owns the open cursor. Clearing the
+                // field on disposal keeps the two in step without depending on the
+                // caller to dispose at all.
+                var tracked = new TrackedStatementResult(streaming, () => _openResult = null);
+                _openResult = tracked;
+
                 return new StatementOutcome
                 {
                     Index = index,
                     Sql = sql,
                     ScriptOffset = scriptOffset,
                     Kind = StatementResultKind.RowSet,
-                    Result = new GatedStatementResult(
-                        OdbcStatementResult.Create(command, reader),
-                        ReleaseAfterResult),
+                    Result = tracked,
                     Elapsed = stopwatch.Elapsed,
                     TransactionState = TransactionState,
                 };
@@ -420,8 +488,12 @@ public sealed class InformixOdbcSession : IInformixSession
             if (!resultOwnsCommand)
             {
                 await command.DisposeAsync().ConfigureAwait(false);
-                ReleaseAfterResult();
             }
+
+            // Always released here. The previous design released it when the caller
+            // disposed the result, so a caller that never did wedged the session
+            // permanently — which is exactly what happened on the first real use.
+            ReleaseAfterResult();
         }
     }
 
@@ -552,9 +624,10 @@ public sealed class InformixOdbcSession : IInformixSession
 }
 
 /// <summary>
-/// Wraps a result so the session's execution gate is released when it is disposed.
+/// Wraps a streaming result so the session knows when its cursor is released.
 /// </summary>
-internal sealed class GatedStatementResult(IStatementResult inner, Action onDisposed) : IStatementResult
+internal sealed class TrackedStatementResult(IStatementResult inner, Action onDisposed)
+    : IStatementResult
 {
     private bool _disposed;
 
@@ -563,6 +636,8 @@ internal sealed class GatedStatementResult(IStatementResult inner, Action onDisp
     public long RowsRead => inner.RowsRead;
 
     public bool IsComplete => inner.IsComplete;
+
+    public bool WasTruncated => inner.WasTruncated;
 
     public IAsyncEnumerable<InformixValue[]> ReadRowsAsync(CancellationToken cancellationToken) =>
         inner.ReadRowsAsync(cancellationToken);

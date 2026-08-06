@@ -31,6 +31,17 @@ public interface IStatementResult : IAsyncDisposable
     bool IsComplete { get; }
 
     /// <summary>
+    /// True when rows were dropped to bound memory, so the UI can say so.
+    /// </summary>
+    /// <remarks>
+    /// A single ODBC connection holds one cursor at a time, so every row-returning
+    /// statement but the last in a script must be read into memory before the next
+    /// can run. That read is capped, and a capped read has to admit it — a result
+    /// silently missing rows is worse than one that says it is incomplete.
+    /// </remarks>
+    bool WasTruncated => false;
+
+    /// <summary>
     /// Streams rows. Each row is a fresh array sized to <see cref="Columns"/>.
     /// </summary>
     /// <remarks>

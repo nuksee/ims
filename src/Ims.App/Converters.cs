@@ -53,6 +53,30 @@ public sealed class BooleanToVisibilityConverter : IValueConverter
 }
 
 /// <summary>
+/// Visible once a count reaches the threshold given as the parameter.
+/// </summary>
+/// <remarks>
+/// Used for the result-set tab strip, which is only worth showing when there is
+/// more than one result to switch between. The previous attempt pushed the result
+/// object itself through <see cref="BooleanToVisibilityConverter"/>, which reads a
+/// non-boolean as false — so the strip was collapsed always, and a script with two
+/// result sets silently offered no way to reach the second.
+/// </remarks>
+public sealed class CountToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        int threshold = parameter is string text && int.TryParse(text, out int parsed) ? parsed : 1;
+        int count = value is int actual ? actual : 0;
+
+        return count >= threshold ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>
 /// A background accent for the environment badge.
 /// </summary>
 /// <remarks>

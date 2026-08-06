@@ -3,6 +3,7 @@ using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Data;
+using System.Windows.Input;
 using System.Xml;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Highlighting.Xshd;
@@ -20,6 +21,33 @@ namespace Ims.App;
 
 public partial class MainWindow : Window
 {
+    // PR-3.10 and PR-8.1. Routed commands rather than KeyBindings bound to the
+    // DataContext: the gesture then works with focus inside the editor, and the
+    // menu item picks up its own shortcut text automatically.
+    public static readonly RoutedUICommand ExecuteCommand = new(
+        "Execute", nameof(ExecuteCommand), typeof(MainWindow),
+        [new KeyGesture(Key.F5)]);
+
+    public static readonly RoutedUICommand ExecuteSelectionCommand = new(
+        "Execute selection", nameof(ExecuteSelectionCommand), typeof(MainWindow),
+        [new KeyGesture(Key.Enter, ModifierKeys.Control)]);
+
+    public static readonly RoutedUICommand CancelExecutionCommand = new(
+        "Cancel", nameof(CancelExecutionCommand), typeof(MainWindow),
+        [new KeyGesture(Key.Cancel, ModifierKeys.Alt)]);
+
+    public static readonly RoutedUICommand NewQueryCommand = new(
+        "New query", nameof(NewQueryCommand), typeof(MainWindow),
+        [new KeyGesture(Key.N, ModifierKeys.Control)]);
+
+    public static readonly RoutedUICommand OpenFileCommand = new(
+        "Open", nameof(OpenFileCommand), typeof(MainWindow),
+        [new KeyGesture(Key.O, ModifierKeys.Control)]);
+
+    public static readonly RoutedUICommand SaveFileCommand = new(
+        "Save", nameof(SaveFileCommand), typeof(MainWindow),
+        [new KeyGesture(Key.S, ModifierKeys.Control)]);
+
     private readonly MainViewModel _viewModel;
     private readonly ConnectionStore _connections;
     private readonly WindowsCredentialStore _credentials;
@@ -47,6 +75,13 @@ public partial class MainWindow : Window
         viewModel.PromptForPassword = PromptForPassword;
 
         CsdkStatusText.Text = $"Client SDK {csdk.Version ?? "(unknown)"}";
+
+        CommandBindings.Add(new CommandBinding(ExecuteCommand, async (_, _) => await ExecuteAsync(false)));
+        CommandBindings.Add(new CommandBinding(ExecuteSelectionCommand, async (_, _) => await ExecuteAsync(true)));
+        CommandBindings.Add(new CommandBinding(CancelExecutionCommand, OnCancel));
+        CommandBindings.Add(new CommandBinding(NewQueryCommand, OnNewQuery));
+        CommandBindings.Add(new CommandBinding(OpenFileCommand, OnOpenFile));
+        CommandBindings.Add(new CommandBinding(SaveFileCommand, OnSaveFile));
 
         LoadSyntaxHighlighting();
 

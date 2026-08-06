@@ -18,35 +18,39 @@
     <local:InformixValueConverter x:Key="ValueConverter" />
     <local:InformixValueIsNullConverter x:Key="IsNullConverter" />
     <local:BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    <local:CountToVisibilityConverter x:Key="CountToVisibility" />
     <local:EnvironmentBrushConverter x:Key="EnvironmentBrush" />
     <local:TransactionStateConverter x:Key="TransactionText" />
     <local:StatementOutcomeConverter x:Key="OutcomeText" />
   </Window.Resources>
 
-  <Window.InputBindings>
-    <!-- PR-3.10: execute, cancel, new tab and tab switching all from the keyboard,
-         using the bindings SSMS users already have in their fingers (PR-8.1). -->
-    <KeyBinding Key="F5" Command="{Binding ExecuteCommand}" />
-    <KeyBinding Modifiers="Control" Key="Enter" Command="{Binding ExecuteCommand}" />
-    <KeyBinding Modifiers="Alt" Key="Cancel" Command="{Binding CancelCommand}" />
-    <KeyBinding Modifiers="Control" Key="N" Command="{Binding NewQueryCommand}" />
-  </Window.InputBindings>
+  <!--
+    PR-3.10: execute, cancel and new tab from the keyboard, using the gestures
+    SSMS users already have in their fingers (PR-8.1).
+
+    These are RoutedUICommands declared in code-behind, not {Binding} to view-model
+    commands. The first attempt bound to ExecuteCommand on the window's DataContext,
+    which is MainViewModel — but that command lives on EditorTabViewModel, so the
+    binding silently resolved to nothing and F5 did exactly that. A routed command
+    also reaches the handler when focus is inside the editor, which a KeyBinding on
+    the window does not reliably do.
+  -->
 
   <DockPanel>
 
     <Menu DockPanel.Dock="Top">
       <MenuItem Header="_File">
-        <MenuItem Header="_New query" InputGestureText="Ctrl+N" Click="OnNewQuery" />
-        <MenuItem Header="_Open…" InputGestureText="Ctrl+O" Click="OnOpenFile" />
-        <MenuItem Header="_Save" InputGestureText="Ctrl+S" Click="OnSaveFile" />
+        <MenuItem Header="_New query" Command="{x:Static local:MainWindow.NewQueryCommand}" />
+        <MenuItem Header="_Open…" Command="{x:Static local:MainWindow.OpenFileCommand}" />
+        <MenuItem Header="_Save" Command="{x:Static local:MainWindow.SaveFileCommand}" />
         <MenuItem Header="Save _as…" Click="OnSaveFileAs" />
         <Separator />
         <MenuItem Header="E_xit" Click="OnExit" />
       </MenuItem>
       <MenuItem Header="_Query">
-        <MenuItem Header="_Execute" InputGestureText="F5" Click="OnExecute" />
-        <MenuItem Header="Execute _selection" InputGestureText="Ctrl+Enter" Click="OnExecuteSelection" />
-        <MenuItem Header="_Cancel" InputGestureText="Alt+Break" Click="OnCancel" />
+        <MenuItem Header="_Execute" Command="{x:Static local:MainWindow.ExecuteCommand}" />
+        <MenuItem Header="Execute _selection" Command="{x:Static local:MainWindow.ExecuteSelectionCommand}" />
+        <MenuItem Header="_Cancel" Command="{x:Static local:MainWindow.CancelExecutionCommand}" />
         <Separator />
         <MenuItem Header="Commit" Click="OnCommit" />
         <MenuItem Header="Roll back" Click="OnRollback" />
@@ -218,8 +222,9 @@
                           SelectedItem="{Binding SelectedTab.SelectedResult}"
                           SelectionChanged="OnResultSetChanged"
                           BorderThickness="0" Height="24"
-                          Visibility="{Binding SelectedTab.SelectedResult,
-                                       Converter={StaticResource BoolToVisibility}}">
+                          Visibility="{Binding SelectedTab.Results.Count,
+                                       Converter={StaticResource CountToVisibility},
+                                       ConverterParameter=2}">
                 <TabControl.ItemTemplate>
                   <DataTemplate>
                     <TextBlock Text="Result" />

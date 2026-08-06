@@ -60,6 +60,10 @@ public sealed partial class MainViewModel : ObservableObject
     private readonly Dictionary<Guid, IInformixSession> _sessions = [];
     private readonly DispatcherTimer _autosaveTimer;
 
+    // Monotonic. Tabs.Count + 1 repeats a name as soon as a tab is closed, and two
+    // tabs called "Query 2" also collide in the autosave store, which is keyed by title.
+    private int _nextTabNumber = 1;
+
     [ObservableProperty]
     private string _searchTerm = string.Empty;
 
@@ -230,7 +234,7 @@ public sealed partial class MainViewModel : ObservableObject
         {
             Session = session ?? SelectedTab?.Session,
             Sql = sql ?? string.Empty,
-            Title = title ?? $"Query {Tabs.Count + 1}",
+            Title = title ?? $"Query {_nextTabNumber++}",
         };
 
         Tabs.Add(tab);
