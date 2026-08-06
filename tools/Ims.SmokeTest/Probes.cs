@@ -169,6 +169,13 @@ public static class Probes
         findings.Add(Track(Try("GetFieldValue<string>", () => reader.GetFieldValue<string>(0))));
         findings.Add(Track(Try("GetChars", () => ReadChars(reader, 0))));
 
+        // IMS infers nullness on these columns from InvalidCastException, because
+        // IsDBNull throws before it can answer. That assumption decides whether a
+        // NULL interval renders as "(null)" (PR-4.4) or as something wrong, so it
+        // is measured rather than trusted.
+        findings.Add(await NullIntervalBehaviourAsync(connection, cancellationToken)
+            .ConfigureAwait(false));
+
         string detail = "How an INTERVAL column can be reached:" + Environment.NewLine
                         + string.Join(Environment.NewLine, findings.Select(f => "      " + f));
 
@@ -191,6 +198,48 @@ public static class Probes
             }
 
             return finding;
+        }
+    }
+
+    /// <summary>
+    /// What <c>GetString</c> does with a NULL interval, since <c>IsDBNull</c> cannot
+    /// be asked.
+    /// </summary>
+    private static async Task<string> NullIntervalBehaviourAsync(
+        OdbcConnection connection,
+        CancellationToken cancellationToken)
+    {
+        const string sql =
+            "SELECT FIRST 1 CAST(NULL AS INTERVAL DAY TO SECOND) AS iv FROM systables";
+
+        try
+        {
+            using var command = new OdbcCommand(sql, connection) { CommandTimeout = 30 };
+
+            using OdbcDataReader reader = (OdbcDataReader)await command
+                .ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                return "NULL interval           => no row returned";
+            }
+
+            try
+            {
+                string? value = reader.GetString(0);
+
+                return $"NULL interval           => GetString returned "
+                       + (value is null ? "null" : $"'{value}' (NOT an exception)");
+            }
+            catch (Exception ex)
+            {
+                return $"NULL interval           => GetString threw {ex.GetType().Name} "
+                       + "(IMS treats InvalidCastException as SQL NULL)";
+            }
+        }
+        catch (OdbcException ex)
+        {
+            return $"NULL interval           => could not test: {Describe(ex)}";
         }
     }
 
@@ -306,21 +355,32 @@ public static class Probes
                 }
             }
 
-            // Informix reports the SQLCODE and the ISAM error as two entries in the
-            // diagnostic record. If only one comes through, PR-3.6 needs another route.
             string summary = string.Join(" | ", detail);
 
-            return ex.Errors.Count >= 2 && sawNativeCode
+            // The SQLCODE is the part PR-3.6 always needs, and it either arrives or
+            // it does not. The ISAM error is a different question: most errors do
+            // not have one. -206 (table not found) is purely a SQL-level error, so a
+            // single diagnostic record here is correct rather than a shortfall —
+            // treating it as a failure was the probe being wrong, not the driver.
+            //
+            // Whether Informix surfaces an ISAM code through ODBC when there IS one
+            // needs an error that produces one, and those are all either
+            // write operations or need a second session holding a lock. Left for a
+            // run against a non-production instance where that is safe to arrange.
+            return sawNativeCode
                 ? ProbeResult.Pass(
                     "Error detail",
                     "PR-3.6",
-                    $"{ex.Errors.Count} diagnostic records, SQLCODE and ISAM both present. {summary}",
+                    $"SQLCODE retrievable. {ex.Errors.Count} diagnostic record(s): {summary}"
+                    + Environment.NewLine
+                    + "      ISAM reporting is NOT proven by this probe — SQLCODE -206 has no ISAM "
+                    + "error. Needs a lock conflict or constraint violation to confirm.",
                     sql)
-                : ProbeResult.Inconclusive(
+                : ProbeResult.Fail(
                     "Error detail",
                     "PR-3.6",
-                    $"{ex.Errors.Count} diagnostic record(s). PR-3.6 wants SQLCODE and the ISAM "
-                    + $"error together — check whether the ISAM code is here. {summary}",
+                    $"No native error code came through at all, so PR-3.6 cannot be met as "
+                    + $"written. {summary}",
                     sql);
         }
     }

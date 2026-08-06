@@ -23,20 +23,47 @@ must be usable alone, and this one isn't, so it should be measured in days not w
 - [ ] **Run `Ims.SmokeTest` against non-prod 12.10 and 14.10** — the spike is written but unrun; see "Blocked on a live server" below — DEP-2, RSK-9
 - [ ] Secure DEP-3 (a realistic-size schema for NFR-2)
 
-### Blocked on a live server
+### Answered by the smoke test — against `demo_srv`, Informix **14.10**
 
-Everything below is implemented and unit-tested, but its *behaviour against Informix* is
-unverified because no non-production instance was available. `tools/Ims.SmokeTest` exists
-precisely to settle these; run it once against 12.10 and once against 14.10.
-
-| Question | Requirement | Why it matters |
+| Question | Requirement | Answer |
 |---|---|---|
-| Can `OdbcCommand.Cancel()` stop a statement without losing the session? | PR-3.5 | If not, Slice 1 needs a second connection issuing an administrative cancel |
-| Does the driver stream, or buffer the whole result set? | PR-4.2, RSK-6 | If it buffers, the streaming contract cannot be honoured through ODBC |
-| Does DATETIME arrive with enough information to recover its qualifier? | PR-4.5 | The mapper handles the catalogue encoding; the ODBC path is untested |
-| Are SQLCODE *and* the ISAM error both retrievable? | PR-3.6 | If ODBC surfaces only one, PR-3.6 needs another route |
-| Is `SECURITY=ssl` the right keyword for encrypted connections? | PR-1.10 | Emitted but unverified — flagged in the code |
-| Can an ordinary developer read `sysmaster`? | **Q-1** | Gates Slice 3 entirely |
+| Can an ordinary developer read `sysmaster`? | **Q-1** | ✅ **Yes.** `sysmaster:syssessions` read as a normal developer account. **Slice 3 is unblocked and serves the primary user (U1), not only U2/U3.** AS-3 holds |
+| Does ODBC connect over the CSDK at all? | PR-1.1, DEC-4 | ✅ Yes, 506 ms. The `Database` keyword must be *present*, even empty |
+| Does DATETIME keep its qualifier? | PR-4.5 | ✅ Yes — `GetDataTypeName` returns `DATETIME YEAR TO FRACTION(3)` in full |
+| Can INTERVAL be read at all? | PR-4.5 | ⚠️ **Only as text.** See the constraint below |
+| Is SQLCODE retrievable? | PR-3.6 | ✅ Yes. ISAM reporting still unproven — `-206` has no ISAM error; needs a lock conflict or constraint violation |
+| Is `SECURITY=ssl` the keyword for encryption? | PR-1.10 | ❌ **No.** The driver ignores unknown keywords silently, so it would have faked encryption. Now throws instead |
+
+### The INTERVAL constraint — measured, and it shapes the code
+
+`System.Data.Odbc` has no type-map entry for ODBC's `SQL_INTERVAL_*` types (110 =
+`DAY TO SECOND`) and throws `ArgumentException` from inside `TypeMap` *before* any value
+conversion:
+
+| Accessor | On an INTERVAL column |
+|---|---|
+| `GetName`, `GetDataTypeName` | ✅ works — and the type name carries the full qualifier |
+| `GetString`, `GetFieldValue<string>`, `GetChars` | ✅ works — returns e.g. `"  5 12:30:45"`, padded |
+| `GetValue`, `IsDBNull`, `GetFieldType`, `GetSchemaTable` | ❌ throws |
+
+Worse, the damage is not confined to the offending column: **every column at or after the
+first INTERVAL became unreadable**, including `DECIMAL` and `LVARCHAR` ones. So the
+unsupported accessors must never be called at all. `OdbcStatementResult` therefore decides
+once, from the type name, which columns are text-access, and `GetSchemaTable` failure is
+treated as normal rather than exceptional.
+
+**DEC-4's ODBC branch survives this** — PR-4.5 is reachable — but it is the closest thing to
+a reason to reopen it that has come up, and it is worth remembering if another type turns out
+to be equally unmapped.
+
+### Still blocked on a live server
+
+- [ ] Run against a **12.10** instance — only 14.10 has been tested (RSK-9, DEC-5)
+- [ ] Cancellation: does `OdbcCommand.Cancel()` leave the session usable? — PR-3.5 *(needs `--include-load`, so a non-production instance)*
+- [ ] Streaming: does the driver stream or buffer? — PR-4.2, RSK-6 *(same)*
+- [ ] ISAM error reporting, via a lock conflict or constraint violation — PR-3.6
+- [ ] NULL INTERVAL: IMS infers null from `InvalidCastException`; the probe now measures this — PR-4.4
+- [ ] NFR-2 scale, 20,000+ objects and 1,000,000+ rows — DEP-3 unmet
 
 ---
 
@@ -137,11 +164,12 @@ Still open, because each needs a live server:
 
 ## Slice 3 — Observe
 
-> **Gated on Q-1.** Before writing any of this: connect as an *unprivileged* developer
-> account and run the `sysmaster` session queries. If they fail and no role can be granted,
-> this slice serves only U2/U3 — stop and re-prioritise against §8 (AS-3, DEP-4).
+> **Q-1 is answered: unblocked.** The smoke test read `sysmaster:syssessions` as an
+> ordinary developer account against 14.10, so AS-3 holds and this slice serves U1 —
+> the primary user — not only U2 and U3. Its priority stands as written; no
+> re-prioritisation against §8 is needed.
 
-- [ ] **BLOCKER** Answer Q-1: can ordinary developers read `sysmaster`? Can a role be granted? — Q-1, AS-3
+- [x] **Q-1 answered:** ordinary developers can read `sysmaster` — Q-1, AS-3, DEP-4
 - [ ] **M** Session list: id, user, originating host, application, connection time, state, current/recent SQL — PR-5.1
 - [ ] **M** Selected-session detail: locks held and awaited, resource consumption, temp space — PR-5.2
 - [ ] **M** Blocked-session identification, with the blocker named — PR-5.3
@@ -182,6 +210,6 @@ has proven they're missed: PR-1.9, PR-1.10, PR-2.9, PR-2.10, PR-3.13, PR-4.7, PR
 
 | ID | Question | Needed by |
 |---|---|---|
-| Q-1 | Can ordinary developers read `sysmaster`? | **Before Slice 3** — cheap to test, blocks the whole slice |
+| ~~Q-1~~ | ~~Can ordinary developers read `sysmaster`?~~ | **Closed.** Yes — measured against 14.10. Slice 3 unblocked |
 | Q-2 | Strictly agentless, or is an optional local agent acceptable later? | Before Tier 1 |
 | Q-3 | Which §8 Tier 1 item comes first? | After Slice 3 — answer from real use |

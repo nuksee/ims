@@ -331,6 +331,19 @@ public static class InformixTypeMapper
 
     private static bool TryParseField(string text, out DateTimeField field)
     {
+        // The driver reports a leading-field precision, e.g. "INTERVAL DAY(2) TO
+        // SECOND". The precision does not change which field it is, so it is
+        // stripped — except for FRACTION, where the number selects the field.
+        if (!text.StartsWith("FRACTION", StringComparison.Ordinal))
+        {
+            int parenthesis = text.IndexOf('(', StringComparison.Ordinal);
+
+            if (parenthesis > 0)
+            {
+                text = text[..parenthesis].TrimEnd();
+            }
+        }
+
         switch (text)
         {
             case "YEAR": field = DateTimeField.Year; return true;

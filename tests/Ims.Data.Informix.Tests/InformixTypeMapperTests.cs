@@ -90,6 +90,13 @@ public class InformixTypeMapperTests
     [InlineData("INTERVAL DAY TO SECOND", "DAY TO SECOND")]
     [InlineData("year to day", "YEAR TO DAY")]
     [InlineData("MONTH", "MONTH")]
+    // Exactly what the CSDK 4.10 driver returns from GetDataTypeName for an
+    // interval column. The leading-field precision does not change which field it
+    // is, so it is stripped — but not for FRACTION, where the number selects it.
+    [InlineData("INTERVAL DAY(2) TO SECOND", "DAY TO SECOND")]
+    [InlineData("INTERVAL YEAR(4) TO MONTH", "YEAR TO MONTH")]
+    [InlineData("DATETIME YEAR(4) TO FRACTION(5)", "YEAR TO FRACTION(5)")]
+    [InlineData("INTERVAL DAY(9) TO FRACTION(3)", "DAY TO FRACTION(3)")]
     public void Parses_a_written_qualifier(string input, string expected)
     {
         InformixTypeMapper.TryParseQualifier(input, out DateTimeQualifier qualifier)
@@ -216,6 +223,39 @@ public class InformixTypeMapperTests
         value.TryGetInterval(out InformixInterval interval).Should().BeTrue();
         interval.Days.Should().Be(5);
         value.ToDisplayString().Should().Be("5 12:30:45");
+    }
+
+    [Fact]
+    public void Parses_the_padded_interval_text_the_driver_actually_returns()
+    {
+        // The CSDK driver right-aligns the leading field, so GetString returns
+        // "  5 12:30:45" rather than "5 12:30:45". The padding is presentation,
+        // not part of the value, and the reader trims it before mapping.
+        var qualifier = new DateTimeQualifier(DateTimeField.Day, DateTimeField.Second);
+
+        InformixValue value = InformixTypeMapper.ToInformixValue(
+            Column(InformixDbType.Interval, qualifier),
+            "  5 12:30:45".Trim());
+
+        value.TryGetInterval(out InformixInterval interval).Should().BeTrue();
+        interval.Days.Should().Be(5);
+        interval.Hours.Should().Be(12);
+    }
+
+    [Fact]
+    public void The_driver_type_name_alone_yields_a_usable_interval_qualifier()
+    {
+        // GetDataTypeName is one of the few accessors that survives on an interval
+        // column, and it carries the whole qualifier. That is what makes PR-4.5
+        // reachable over ODBC despite GetValue and GetSchemaTable throwing.
+        InformixTypeMapper.TryParseQualifier("INTERVAL DAY(2) TO SECOND", out DateTimeQualifier q)
+            .Should().BeTrue();
+
+        InformixInterval.TryParse("5 12:30:45", q, out InformixInterval interval)
+            .Should().BeTrue();
+
+        interval.Days.Should().Be(5);
+        interval.ToTimeSpan().Should().Be(new TimeSpan(5, 12, 30, 45));
     }
 
     [Theory]

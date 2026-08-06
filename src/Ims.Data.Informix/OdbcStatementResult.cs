@@ -25,16 +25,38 @@ internal sealed class OdbcStatementResult : IStatementResult
 {
     private readonly OdbcCommand _command;
     private readonly OdbcDataReader _reader;
+
+    /// <summary>
+    /// Columns that must be read as text because System.Data.Odbc cannot type them.
+    /// </summary>
+    /// <remarks>
+    /// Measured against CSDK 4.10 and Informix 14.10: an INTERVAL column reports
+    /// ODBC's SQL_INTERVAL_* (110 for DAY TO SECOND), which System.Data.Odbc's type
+    /// map has no entry for. <c>GetValue</c>, <c>IsDBNull</c>, <c>GetFieldType</c>
+    /// and <c>GetSchemaTable</c> all throw <see cref="ArgumentException"/> from
+    /// inside the type map, before any value conversion. <c>GetString</c>,
+    /// <c>GetFieldValue&lt;string&gt;</c> and <c>GetChars</c> work.
+    /// <para>
+    /// Worse, the damage is not confined to the offending column: in the probe run,
+    /// every column at or after the first interval became unreadable. So the
+    /// unsupported accessors must never be called at all, which is why this is
+    /// decided once from the type name and honoured for every row.
+    /// </para>
+    /// </remarks>
+    private readonly bool[] _readAsText;
+
     private bool _disposed;
 
     private OdbcStatementResult(
         OdbcCommand command,
         OdbcDataReader reader,
-        IReadOnlyList<ResultColumn> columns)
+        IReadOnlyList<ResultColumn> columns,
+        bool[] readAsText)
     {
         _command = command;
         _reader = reader;
         Columns = columns;
+        _readAsText = readAsText;
     }
 
     public IReadOnlyList<ResultColumn> Columns { get; }
@@ -43,8 +65,16 @@ internal sealed class OdbcStatementResult : IStatementResult
 
     public bool IsComplete { get; private set; }
 
-    public static OdbcStatementResult Create(OdbcCommand command, OdbcDataReader reader) =>
-        new(command, reader, BuildColumns(reader));
+    public static OdbcStatementResult Create(OdbcCommand command, OdbcDataReader reader)
+    {
+        List<ResultColumn> columns = BuildColumns(reader);
+
+        bool[] readAsText = columns
+            .Select(c => c.DbType is InformixDbType.Interval)
+            .ToArray();
+
+        return new OdbcStatementResult(command, reader, columns, readAsText);
+    }
 
     public async IAsyncEnumerable<InformixValue[]> ReadRowsAsync(
         [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -58,6 +88,13 @@ internal sealed class OdbcStatementResult : IStatementResult
             for (int i = 0; i < Columns.Count; i++)
             {
                 ResultColumn column = Columns[i];
+
+                // Text-access columns first: IsDBNull would throw on them.
+                if (_readAsText[i])
+                {
+                    row[i] = ReadAsText(column, i);
+                    continue;
+                }
 
                 if (await _reader.IsDBNullAsync(i, cancellationToken).ConfigureAwait(false))
                 {
@@ -79,6 +116,32 @@ internal sealed class OdbcStatementResult : IStatementResult
         }
 
         IsComplete = true;
+    }
+
+    /// <summary>
+    /// Reads a column that only <c>GetString</c> can reach.
+    /// </summary>
+    /// <remarks>
+    /// Nullness is inferred from <see cref="InvalidCastException"/>, which is what
+    /// <c>DbDataReader.GetString</c> raises for SQL NULL. That is the documented
+    /// contract rather than a guess, and it is the only route available here —
+    /// <c>IsDBNull</c> throws on these columns before it can answer.
+    /// </remarks>
+    private InformixValue ReadAsText(ResultColumn column, int ordinal)
+    {
+        string text;
+
+        try
+        {
+            text = _reader.GetString(ordinal);
+        }
+        catch (InvalidCastException)
+        {
+            return InformixValue.Null(column.DbType);
+        }
+
+        // The driver pads the interval text, and the padding is not part of the value.
+        return InformixTypeMapper.ToInformixValue(column, text.Trim());
     }
 
     public async ValueTask DisposeAsync()
@@ -201,6 +264,8 @@ internal sealed class OdbcStatementResult : IStatementResult
 
         if (dbType == InformixDbType.Interval)
         {
+            // Rarely reached: the driver spells intervals out in full, e.g.
+            // "INTERVAL DAY(2) TO SECOND", so TryParseQualifier above handles them.
             return new DateTimeQualifier(DateTimeField.Day, DateTimeField.Second);
         }
 
@@ -215,15 +280,27 @@ internal sealed class OdbcStatementResult : IStatementResult
         };
     }
 
+    /// <summary>
+    /// Column metadata, where the driver will give it up.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ArgumentException"/> is caught because it is the normal case, not
+    /// an exotic one: a result set containing any INTERVAL column makes
+    /// <c>GetSchemaTable</c> throw "Unknown SQL type - 110" from inside the ODBC
+    /// type map. Precision and scale are a nicety; the result set is not.
+    /// </remarks>
     private static DataTable? TryGetSchemaTable(OdbcDataReader reader)
     {
         try
         {
             return reader.GetSchemaTable();
         }
+        catch (ArgumentException)
+        {
+            return null;
+        }
         catch (OdbcException)
         {
-            // Metadata is a nicety; losing it must not cost the result set.
             return null;
         }
         catch (InvalidOperationException)
