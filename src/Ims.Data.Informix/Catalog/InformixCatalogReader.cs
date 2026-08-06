@@ -391,15 +391,22 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
                 ColNo: GetInt(reader, 0) ?? 0,
                 Name: (GetString(reader, 1) ?? string.Empty).TrimEnd(),
                 ColType: GetInt(reader, 2) ?? 0,
-                ColLength: GetInt(reader, 3) ?? 0),
+                ColLength: GetInt(reader, 3) ?? 0,
+                ExtendedId: GetInt(reader, 4) ?? 0),
             cancellationToken,
             tabId).ConfigureAwait(false);
 
         // Defaults are isolated: sysdefaults has a column literally named "default",
         // and if the parser refuses it, losing defaults is much cheaper than losing
         // the column list.
-        Dictionary<int, string> defaults = await ReadDefaultsAsync(tabId, queries, cancellationToken)
-            .ConfigureAwait(false);
+        Dictionary<int, (char Type, string? Value)> defaults =
+            await ReadDefaultsAsync(tabId, queries, cancellationToken).ConfigureAwait(false);
+
+        // Only fetched when a column actually needs it (PR-6.4).
+        Dictionary<int, string> extendedTypes =
+            raw.Any(c => InformixTypeMapper.RequiresExtendedTypeLookup(c.ColType))
+                ? await ReadExtendedTypesAsync(queries, cancellationToken).ConfigureAwait(false)
+                : [];
 
         var columns = new List<ColumnDetail>(raw.Count);
 
@@ -407,6 +414,19 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
         {
             InformixDbType dbType = InformixTypeMapper.FromCatalogTypeCode(column.ColType);
             bool nullable = !InformixTypeMapper.IsNotNullFromCatalog(column.ColType);
+
+            // Codes 40 and 41 are "some opaque type"; the name lives in sysxtdtypes.
+            string? extendedName = null;
+
+            if (InformixTypeMapper.RequiresExtendedTypeLookup(column.ColType)
+                && extendedTypes.TryGetValue(column.ExtendedId, out string? found))
+            {
+                extendedName = found;
+                dbType = InformixTypeMapper.FromServerTypeName(found) is var mapped
+                         && mapped != InformixDbType.Other
+                    ? mapped
+                    : dbType;
+            }
 
             DateTimeQualifier? qualifier = null;
 
@@ -430,7 +450,12 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
                 Position = column.ColNo,
                 Name = column.Name,
                 DbType = dbType,
-                TypeDescription = DescribeType(dbType, column.ColLength, qualifier, precision, scale),
+
+                // The server's own name for an opaque type beats anything IMS could
+                // infer from the code alone (PR-8.2).
+                TypeDescription = extendedName is { Length: > 0 }
+                    ? extendedName.ToUpperInvariant()
+                    : DescribeType(dbType, column.ColLength, qualifier, precision, scale),
                 IsNullable = nullable,
                 Qualifier = qualifier,
                 Length = dbType is InformixDbType.Char or InformixDbType.VarChar
@@ -439,7 +464,9 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
                     : null,
                 Precision = precision,
                 Scale = scale,
-                DefaultValue = defaults.GetValueOrDefault(column.ColNo),
+                DefaultValue = defaults.TryGetValue(column.ColNo, out var stored)
+                    ? DescribeDefault(stored.Type, stored.Value, dbType)
+                    : null,
                 RawColType = column.ColType,
                 RawColLength = column.ColLength,
             });
@@ -448,7 +475,7 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
         return columns;
     }
 
-    private async Task<Dictionary<int, string>> ReadDefaultsAsync(
+    private async Task<Dictionary<int, (char Type, string? Value)>> ReadDefaultsAsync(
         int tabId,
         List<string> queries,
         CancellationToken cancellationToken)
@@ -468,12 +495,51 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
 
             return rows
                 .Where(r => !string.IsNullOrWhiteSpace(r.Type))
-                .ToDictionary(r => r.ColNo, r => DescribeDefault(r.Type![0], r.Value));
+                .ToDictionary(r => r.ColNo, r => (r.Type![0], r.Value));
         }
         catch (OdbcException ex)
         {
             _logger.LogInformation(
                 "Column defaults are unavailable on this server: {Message}", ex.Message);
+
+            return [];
+        }
+    }
+
+    /// <summary>
+    /// Extended type names by <c>extended_id</c>, for catalogue codes 40 and 41.
+    /// </summary>
+    private async Task<Dictionary<int, string>> ReadExtendedTypesAsync(
+        List<string> queries,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var rows = await QueryAsync(
+                CatalogQueries.ExtendedTypes,
+                reader => (
+                    Id: GetInt(reader, 0) ?? 0,
+                    Name: (GetString(reader, 1) ?? string.Empty).TrimEnd()),
+                cancellationToken).ConfigureAwait(false);
+
+            queries.Add(CatalogQueries.ExtendedTypes);
+
+            var map = new Dictionary<int, string>();
+
+            foreach (var row in rows)
+            {
+                map[row.Id] = row.Name;
+            }
+
+            return map;
+        }
+        catch (OdbcException ex)
+        {
+            // Falling back to "OTHER" is honest; guessing between BLOB, CLOB,
+            // BOOLEAN and a user-defined type would not be (PR-8.4).
+            _logger.LogInformation(
+                "sysxtdtypes is unavailable, so opaque column types stay unresolved: {Message}",
+                ex.Message);
 
             return [];
         }
@@ -506,8 +572,12 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
                     return (
                         Name: (GetString(reader, 0) ?? string.Empty).TrimEnd(),
                         Owner: (GetString(reader, 1) ?? string.Empty).TrimEnd(),
-                        IdxType: GetString(reader, 2),
-                        Clustered: GetString(reader, 3),
+
+                        // Trimmed: these are CHAR(1) columns and come back padded,
+                        // so an untrimmed comparison quietly reported every index as
+                        // non-unique.
+                        IdxType: (GetString(reader, 2) ?? string.Empty).Trim(),
+                        Clustered: (GetString(reader, 3) ?? string.Empty).Trim(),
                         Levels: GetInt(reader, 4),
                         Parts: parts);
                 },
@@ -523,8 +593,7 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
 
                 // idxtype 'U' is unique, 'D' allows duplicates.
                 IsUnique = string.Equals(r.IdxType, "U", StringComparison.OrdinalIgnoreCase),
-                IsClustered = !string.IsNullOrWhiteSpace(r.Clustered)
-                              && r.Clustered.Trim() is "C" or "c",
+                IsClustered = string.Equals(r.Clustered, "C", StringComparison.OrdinalIgnoreCase),
                 Levels = r.Levels,
                 Columns = r.Parts.Select(p => NameForPart(p, columns)).ToList(),
             }).ToList();
@@ -928,16 +997,55 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
             (false, _, _) => DatabaseLogging.None,
         };
 
-    internal static string DescribeDefault(char type, string? value) => type switch
+    /// <summary>
+    /// Turns a <c>sysdefaults</c> row into the default a user would write.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The literal case is not simply the stored text. For any column that is not a
+    /// character type, Informix stores a literal default as an encoded prefix, a
+    /// space, then the literal — an INTEGER defaulting to 0 is stored as
+    /// <c>"AAAAAA 0"</c>. Showing the raw value put that encoding in front of the
+    /// user, which is the opposite of what PR-2.4 is for.
+    /// </para>
+    /// <para>
+    /// Character defaults are left exactly as stored, because there the whole value
+    /// is the default and it may legitimately contain spaces.
+    /// </para>
+    /// </remarks>
+    internal static string DescribeDefault(char type, string? value, InformixDbType dbType) => type switch
     {
         'C' => "CURRENT",
         'N' => "NULL",
         'T' => "TODAY",
         'U' => "USER",
         'S' => "DBSERVERNAME",
-        'L' => value?.Trim() ?? string.Empty,
+        'L' => StripDefaultEncoding(value, dbType),
         _ => value?.Trim() ?? $"({type})",
     };
+
+    internal static string StripDefaultEncoding(string? value, InformixDbType dbType)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        if (IsCharacterType(dbType))
+        {
+            return value.Trim();
+        }
+
+        // Everything else carries the encoded prefix. Split once: the literal itself
+        // may contain spaces (a DATETIME default, for instance).
+        int space = value.IndexOf(' ', StringComparison.Ordinal);
+
+        return space >= 0 ? value[(space + 1)..].Trim() : value.Trim();
+    }
+
+    private static bool IsCharacterType(InformixDbType dbType) =>
+        dbType is InformixDbType.Char or InformixDbType.VarChar or InformixDbType.NChar
+               or InformixDbType.NVarChar or InformixDbType.LVarChar;
 
     /// <summary>
     /// Precision and scale for DECIMAL and MONEY, which the catalogue packs into

@@ -167,13 +167,66 @@ public class CatalogTranslationTests
     [InlineData('N', "NULL")]
     public void Describes_a_non_literal_default(char type, string expected)
     {
-        InformixCatalogReader.DescribeDefault(type, null).Should().Be(expected);
+        InformixCatalogReader.DescribeDefault(type, null, InformixDbType.Integer)
+            .Should().Be(expected);
     }
 
     [Fact]
-    public void A_literal_default_uses_its_stored_text()
+    public void Strips_the_encoding_Informix_puts_before_a_numeric_default()
     {
-        InformixCatalogReader.DescribeDefault('L', "  0 ").Should().Be("0");
+        // Observed against 14.10: an INTEGER defaulting to 0 is stored as "AAAAAA 0".
+        // The pane showed the raw value, which is the opposite of what PR-2.4 is for.
+        InformixCatalogReader.DescribeDefault('L', "AAAAAA 0", InformixDbType.Integer)
+            .Should().Be("0");
+    }
+
+    [Theory]
+    [InlineData(InformixDbType.SmallInt, "AAAAAA 1", "1")]
+    [InlineData(InformixDbType.Decimal, "AAAAAAAAAA 3.14", "3.14")]
+    [InlineData(InformixDbType.Money, "AAAAAAAAAA 0.00", "0.00")]
+    public void Strips_the_encoding_for_every_non_character_type(
+        InformixDbType dbType,
+        string stored,
+        string expected)
+    {
+        InformixCatalogReader.DescribeDefault('L', stored, dbType).Should().Be(expected);
+    }
+
+    [Fact]
+    public void A_datetime_default_keeps_the_spaces_inside_its_literal()
+    {
+        // Only the first space separates the encoding from the literal; the literal
+        // itself may contain more.
+        InformixCatalogReader.DescribeDefault(
+            'L', "AAAAAA 2026-08-06 11:22:33", InformixDbType.DateTime)
+            .Should().Be("2026-08-06 11:22:33");
+    }
+
+    [Theory]
+    [InlineData(InformixDbType.Char, "informix")]
+    [InlineData(InformixDbType.VarChar, "not applicable")]
+    [InlineData(InformixDbType.LVarChar, "two words")]
+    public void A_character_default_is_stored_whole_and_left_alone(
+        InformixDbType dbType,
+        string stored)
+    {
+        // The whole value is the default here, spaces and all — splitting on the
+        // first space would silently truncate it.
+        InformixCatalogReader.DescribeDefault('L', stored, dbType).Should().Be(stored);
+    }
+
+    [Fact]
+    public void A_numeric_default_with_no_encoding_survives_unchanged()
+    {
+        // BOOLEAN defaults arrive as a bare 'f' with no prefix.
+        InformixCatalogReader.DescribeDefault('L', "f", InformixDbType.Boolean).Should().Be("f");
+    }
+
+    [Fact]
+    public void An_empty_default_is_empty_rather_than_null()
+    {
+        InformixCatalogReader.DescribeDefault('L', null, InformixDbType.Integer)
+            .Should().BeEmpty();
     }
 
     [Theory]

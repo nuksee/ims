@@ -206,7 +206,18 @@ public sealed partial class MainViewModel : ObservableObject
         StatusText = $"Connected to {descriptor.TargetLabel}"
                      + (session.ServerInfo is { } info ? $" — {info.VersionBanner}" : string.Empty);
 
-        NewTab(session);
+        // Adopt the current tab if it has no session yet, rather than always opening
+        // a new one. The startup tab and any tab recovered from autosave (PR-3.9)
+        // begin unconnected, and leaving them that way while the status bar reads
+        // "Connected" is a contradiction the user has to resolve by hand.
+        if (SelectedTab is { Session: null } orphan)
+        {
+            orphan.Session = session;
+        }
+        else
+        {
+            NewTab(session);
+        }
 
         await OpenObjectTreeAsync(descriptor, resolver).ConfigureAwait(true);
     }

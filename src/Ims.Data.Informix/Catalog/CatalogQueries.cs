@@ -268,6 +268,21 @@ internal static class CatalogQueries
          ORDER BY evalpos
         """;
 
+    /// <summary>
+    /// Extended type names, for the opaque catalogue codes 40 and 41.
+    /// </summary>
+    /// <remarks>
+    /// <c>syscolumns.coltype</c> 40 and 41 cover BLOB, CLOB, BOOLEAN, LVARCHAR and
+    /// every user-defined type without distinguishing them; the real type is found
+    /// by joining <c>extended_id</c> to here. Only two columns are selected because
+    /// the wider <c>sysxtdtypes</c> query used by the object tree failed against
+    /// 14.10 and the cause is not yet known — asking for less is more likely to work.
+    /// </remarks>
+    public const string ExtendedTypes = """
+        SELECT extended_id, name
+          FROM sysxtdtypes
+        """;
+
     /// <summary>A routine's source, stored as numbered lines.</summary>
     public const string RoutineSource = """
         SELECT data
