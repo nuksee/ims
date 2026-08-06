@@ -66,10 +66,21 @@ internal static class Program
                           + $"({options.Protocol}), database {options.Database ?? "(none)"}");
         Console.WriteLine("This must be a NON-PRODUCTION instance (DEP-2, RSK-5).");
 
-        if (!options.IncludeLoadProbes)
-        {
-            Console.WriteLine("Load probes (streaming, cancellation) are off. Add --include-load to run them.");
-        }
+        // Say which tier is actually running. Reporting the bounded tier as "off"
+        // invites someone to reach for --include-load on a server that cannot take it.
+        Console.WriteLine(
+            options switch
+            {
+                { IncludeLoadProbes: true } =>
+                    "Load probes: UNBOUNDED (streaming, cancellation). No timeout on the "
+                    + "cancellation query — this must be an instance of its own.",
+                { IncludeLightLoadProbes: true } =>
+                    "Load probes: bounded (streaming, cancellation). Capped server-side by "
+                    + "FIRST, with a 30s command timeout.",
+                _ =>
+                    "Load probes (streaming, cancellation) are off. Add --include-light-load "
+                    + "for the bounded form.",
+            });
 
         Console.WriteLine();
 
