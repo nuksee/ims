@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Informix SQL and SPL highlighting (PR-3.1).
+
+  Kept as one definition covering both, because Informix does not separate them:
+  a script routinely mixes DDL, DML and an SPL routine body, and the editor should
+  not need to be told which it is looking at.
+
+  Informix's three comment forms are all here: -- to end of line, { } braces, and
+  the ANSI /* */. A tool that highlights only the ANSI form makes a brace comment
+  look like live code, which is worse than no highlighting at all.
+-->
+<SyntaxDefinition name="Informix SQL" extensions=".sql" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
+
+  <Color name="Comment"     foreground="#FF008000" />
+  <Color name="String"      foreground="#FFA31515" />
+  <Color name="Keyword"     foreground="#FF0000FF" fontWeight="bold" />
+  <Color name="DataType"    foreground="#FF2B91AF" />
+  <Color name="Function"    foreground="#FF795E26" />
+  <Color name="SplKeyword"  foreground="#FF7B1FA2" fontWeight="bold" />
+  <Color name="Number"      foreground="#FF098658" />
+  <Color name="Operator"    foreground="#FF404040" />
+
+  <RuleSet ignoreCase="true">
+
+    <!-- Comments: all three Informix forms. -->
+    <Span color="Comment" begin="--" />
+    <Span color="Comment" multiline="true" begin="\{" end="\}" />
+    <Span color="Comment" multiline="true" begin="/\*" end="\*/" />
+
+    <!-- Literals. Informix escapes a quote by doubling it. -->
+    <Span color="String" multiline="false">
+      <Begin>'</Begin>
+      <End>'</End>
+      <RuleSet>
+        <Span begin="''" end="" />
+      </RuleSet>
+    </Span>
+
+    <!-- Delimited identifiers. -->
+    <Span color="String" multiline="false">
+      <Begin>"</Begin>
+      <End>"</End>
+      <RuleSet>
+        <Span begin="&quot;&quot;" end="" />
+      </RuleSet>
+    </Span>
+
+    <Keywords color="Keyword">
+      <Word>SELECT</Word><Word>FROM</Word><Word>WHERE</Word><Word>GROUP</Word><Word>BY</Word>
+      <Word>HAVING</Word><Word>ORDER</Word><Word>ASC</Word><Word>DESC</Word><Word>DISTINCT</Word>
+      <Word>UNIQUE</Word><Word>ALL</Word><Word>AS</Word><Word>JOIN</Word><Word>INNER</Word>
+      <Word>LEFT</Word><Word>RIGHT</Word><Word>FULL</Word><Word>OUTER</Word><Word>ON</Word>
+      <Word>UNION</Word><Word>INTERSECT</Word><Word>MINUS</Word><Word>EXISTS</Word><Word>IN</Word>
+      <Word>NOT</Word><Word>AND</Word><Word>OR</Word><Word>BETWEEN</Word><Word>LIKE</Word>
+      <Word>MATCHES</Word><Word>IS</Word><Word>NULL</Word><Word>CASE</Word><Word>WHEN</Word>
+      <Word>THEN</Word><Word>ELSE</Word><Word>END</Word><Word>INSERT</Word><Word>INTO</Word>
+      <Word>VALUES</Word><Word>UPDATE</Word><Word>SET</Word><Word>DELETE</Word><Word>MERGE</Word>
+      <Word>CREATE</Word><Word>ALTER</Word><Word>DROP</Word><Word>TABLE</Word><Word>VIEW</Word>
+      <Word>INDEX</Word><Word>SYNONYM</Word><Word>SEQUENCE</Word><Word>TRIGGER</Word>
+      <Word>CONSTRAINT</Word><Word>PRIMARY</Word><Word>FOREIGN</Word><Word>KEY</Word>
+      <Word>REFERENCES</Word><Word>CHECK</Word><Word>DEFAULT</Word><Word>GRANT</Word>
+      <Word>REVOKE</Word><Word>DATABASE</Word><Word>CONNECT</Word><Word>DISCONNECT</Word>
+      <Word>BEGIN</Word><Word>COMMIT</Word><Word>ROLLBACK</Word><Word>WORK</Word>
+      <Word>TRANSACTION</Word><Word>LOCK</Word><Word>MODE</Word><Word>ISOLATION</Word>
+      <Word>FIRST</Word><Word>SKIP</Word><Word>LIMIT</Word><Word>WITH</Word><Word>TEMP</Word>
+      <Word>EXTENT</Word><Word>SIZE</Word><Word>NEXT</Word><Word>FRAGMENT</Word><Word>PARTITION</Word>
+      <Word>DBSPACE</Word><Word>IN</Word><Word>USING</Word><Word>SET</Word><Word>EXPLAIN</Word>
+      <Word>UPDATE</Word><Word>STATISTICS</Word><Word>MEDIUM</Word><Word>HIGH</Word><Word>LOW</Word>
+      <Word>OUTER</Word><Word>CURRENT</Word><Word>OF</Word><Word>CURSOR</Word><Word>FOR</Word>
+      <Word>EXECUTE</Word><Word>PROCEDURE</Word><Word>FUNCTION</Word><Word>PREPARE</Word>
+      <Word>DECLARE</Word><Word>OPEN</Word><Word>FETCH</Word><Word>CLOSE</Word><Word>FREE</Word>
+    </Keywords>
+
+    <!-- SPL. Informix's procedural extension; visually distinct so an SPL body
+         reads differently from the SQL around it. -->
+    <Keywords color="SplKeyword">
+      <Word>DEFINE</Word><Word>LET</Word><Word>IF</Word><Word>ELIF</Word><Word>WHILE</Word>
+      <Word>FOREACH</Word><Word>RETURN</Word><Word>RETURNING</Word><Word>RETURNS</Word>
+      <Word>RAISE</Word><Word>EXCEPTION</Word><Word>SYSTEM</Word><Word>TRACE</Word>
+      <Word>CONTINUE</Word><Word>EXIT</Word><Word>CALL</Word><Word>REFERENCING</Word>
+      <Word>OLD</Word><Word>NEW</Word><Word>BEFORE</Word><Word>AFTER</Word><Word>EACH</Word>
+      <Word>ROW</Word><Word>ON</Word><Word>DOCUMENT</Word><Word>SPECIFIC</Word>
+      <Word>GLOBAL</Word><Word>RESUME</Word><Word>WITHOUT</Word><Word>REPLACE</Word>
+    </Keywords>
+
+    <Keywords color="DataType">
+      <Word>CHAR</Word><Word>CHARACTER</Word><Word>VARCHAR</Word><Word>LVARCHAR</Word>
+      <Word>NCHAR</Word><Word>NVARCHAR</Word><Word>SMALLINT</Word><Word>INT</Word>
+      <Word>INTEGER</Word><Word>INT8</Word><Word>BIGINT</Word><Word>SERIAL</Word>
+      <Word>SERIAL8</Word><Word>BIGSERIAL</Word><Word>DECIMAL</Word><Word>DEC</Word>
+      <Word>NUMERIC</Word><Word>MONEY</Word><Word>FLOAT</Word><Word>SMALLFLOAT</Word>
+      <Word>REAL</Word><Word>DOUBLE</Word><Word>PRECISION</Word><Word>DATE</Word>
+      <Word>DATETIME</Word><Word>INTERVAL</Word><Word>YEAR</Word><Word>MONTH</Word>
+      <Word>DAY</Word><Word>HOUR</Word><Word>MINUTE</Word><Word>SECOND</Word>
+      <Word>FRACTION</Word><Word>BOOLEAN</Word><Word>BYTE</Word><Word>TEXT</Word>
+      <Word>BLOB</Word><Word>CLOB</Word><Word>SET</Word><Word>MULTISET</Word>
+      <Word>LIST</Word><Word>ROW</Word><Word>OPAQUE</Word><Word>DISTINCT</Word>
+    </Keywords>
+
+    <Keywords color="Function">
+      <Word>COUNT</Word><Word>SUM</Word><Word>AVG</Word><Word>MIN</Word><Word>MAX</Word>
+      <Word>TODAY</Word><Word>CURRENT</Word><Word>SYSDATE</Word><Word>EXTEND</Word>
+      <Word>MDY</Word><Word>DATE</Word><Word>DAY</Word><Word>MONTH</Word><Word>YEAR</Word>
+      <Word>WEEKDAY</Word><Word>TRIM</Word><Word>SUBSTR</Word><Word>SUBSTRING</Word>
+      <Word>LENGTH</Word><Word>UPPER</Word><Word>LOWER</Word><Word>INITCAP</Word>
+      <Word>REPLACE</Word><Word>LPAD</Word><Word>RPAD</Word><Word>NVL</Word>
+      <Word>DECODE</Word><Word>ROUND</Word><Word>TRUNC</Word><Word>MOD</Word>
+      <Word>ABS</Word><Word>POW</Word><Word>SQRT</Word><Word>DBINFO</Word>
+      <Word>DBSERVERNAME</Word><Word>USER</Word><Word>SITENAME</Word><Word>TO_CHAR</Word>
+      <Word>TO_DATE</Word><Word>TO_NUMBER</Word><Word>CAST</Word><Word>NULLIF</Word>
+      <Word>COALESCE</Word><Word>ROWID</Word><Word>LAG</Word><Word>LEAD</Word>
+      <Word>OVER</Word><Word>RANK</Word><Word>ROW_NUMBER</Word><Word>PARTITION</Word>
+    </Keywords>
+
+    <Rule color="Number">
+      \b0[xX][0-9a-fA-F]+
+      |
+      (\b\d+(\.[0-9]+)?|\.[0-9]+)([eE][+-]?[0-9]+)?
+    </Rule>
+
+    <Rule color="Operator">
+      [?,.;()\[\]{}+\-/%*&lt;&gt;^+~!|&amp;=]+
+    </Rule>
+
+  </RuleSet>
+</SyntaxDefinition>

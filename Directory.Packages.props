@@ -32,6 +32,9 @@
     <!-- PR-3.1 / PR-3.2: the SQL editor. MIT. -->
     <PackageVersion Include="AvalonEdit" Version="6.3.0.90" />
 
+    <!-- MVVM plumbing for the WPF shell. MIT. -->
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.0" />
+
     <!-- Test stack. -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageVersion Include="xunit" Version="2.9.2" />

@@ -18,6 +18,13 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Hosting" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="AvalonEdit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- PR-3.1: Informix SQL and SPL highlighting, loaded by AvalonEdit at startup. -->
+    <EmbeddedResource Include="Resources\InformixSql.xshd" />
   </ItemGroup>
 
   <ItemGroup>

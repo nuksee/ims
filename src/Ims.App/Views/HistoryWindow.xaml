@@ -1,0 +1,44 @@
+<Window x:Class="Ims.App.Views.HistoryWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Query history"
+        Height="560" Width="900"
+        WindowStartupLocation="CenterOwner">
+
+  <!--
+    PR-3.12 and DEC-8: local, user-visible history. Not an audit trail, and not
+    presented as one. DEC-2 means IMS takes no privileged action of its own, so
+    Informix's own logging remains the record.
+  -->
+
+  <DockPanel Margin="12">
+    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,8">
+      <Button DockPanel.Dock="Right" Content="Open in _new tab" Padding="10,3" Margin="8,0,0,0"
+              Click="OnOpenInEditor" />
+      <TextBox x:Name="SearchBox" Padding="4,3" TextChanged="OnSearchChanged"
+               AutomationProperties.Name="Search history" />
+    </DockPanel>
+
+    <TextBlock DockPanel.Dock="Bottom" x:Name="CountText" Margin="0,8,0,0"
+               Foreground="#FF5F6368" />
+
+    <DataGrid x:Name="HistoryGrid"
+              AutoGenerateColumns="False"
+              IsReadOnly="True"
+              SelectionMode="Single"
+              GridLinesVisibility="Horizontal"
+              EnableRowVirtualization="True"
+              MouseDoubleClick="OnOpenInEditor"
+              AutomationProperties.Name="Query history">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="When" Binding="{Binding ExecutedAt, StringFormat=g}" Width="140" />
+        <DataGridTextColumn Header="Target" Binding="{Binding Target}" Width="170" />
+        <DataGridTextColumn Header="ms" Binding="{Binding ElapsedMilliseconds, StringFormat=N0}" Width="60" />
+        <DataGridTextColumn Header="Rows" Binding="{Binding RowCount}" Width="60" />
+        <DataGridCheckBoxColumn Header="OK" Binding="{Binding Succeeded}" Width="40" />
+        <DataGridTextColumn Header="Statement" Binding="{Binding Sql}" Width="*"
+                            FontFamily="Consolas" />
+      </DataGrid.Columns>
+    </DataGrid>
+  </DockPanel>
+</Window>

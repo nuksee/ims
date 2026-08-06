@@ -1,54 +1,271 @@
 <Window x:Class="Ims.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:Ims.App"
+        xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
         Title="Informix Management Studio"
-        Height="720" Width="1180"
-        WindowStartupLocation="CenterScreen">
+        Height="820" Width="1320"
+        WindowStartupLocation="CenterScreen"
+        Closing="OnClosing">
 
   <!--
-    The Slice 0 shell. Deliberately near-empty: Slice 1 (connect and query) is
-    what makes this window worth opening, and PR-8.4 says a half-implemented
-    capability is worse than an absent one.
+    Layout follows SSMS (PR-8.1): registered servers on the left, a tabbed query
+    editor on the right, results beneath it, status along the bottom. The users'
+    existing muscle memory is an asset.
   -->
 
+  <Window.Resources>
+    <local:InformixValueConverter x:Key="ValueConverter" />
+    <local:InformixValueIsNullConverter x:Key="IsNullConverter" />
+    <local:BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+    <local:EnvironmentBrushConverter x:Key="EnvironmentBrush" />
+    <local:TransactionStateConverter x:Key="TransactionText" />
+    <local:StatementOutcomeConverter x:Key="OutcomeText" />
+  </Window.Resources>
+
+  <Window.InputBindings>
+    <!-- PR-3.10: execute, cancel, new tab and tab switching all from the keyboard,
+         using the bindings SSMS users already have in their fingers (PR-8.1). -->
+    <KeyBinding Key="F5" Command="{Binding ExecuteCommand}" />
+    <KeyBinding Modifiers="Control" Key="Enter" Command="{Binding ExecuteCommand}" />
+    <KeyBinding Modifiers="Alt" Key="Cancel" Command="{Binding CancelCommand}" />
+    <KeyBinding Modifiers="Control" Key="N" Command="{Binding NewQueryCommand}" />
+  </Window.InputBindings>
+
   <DockPanel>
+
     <Menu DockPanel.Dock="Top">
       <MenuItem Header="_File">
-        <MenuItem x:Name="ExitMenuItem" Header="E_xit" Click="OnExit" />
+        <MenuItem Header="_New query" InputGestureText="Ctrl+N" Click="OnNewQuery" />
+        <MenuItem Header="_Open…" InputGestureText="Ctrl+O" Click="OnOpenFile" />
+        <MenuItem Header="_Save" InputGestureText="Ctrl+S" Click="OnSaveFile" />
+        <MenuItem Header="Save _as…" Click="OnSaveFileAs" />
+        <Separator />
+        <MenuItem Header="E_xit" Click="OnExit" />
+      </MenuItem>
+      <MenuItem Header="_Query">
+        <MenuItem Header="_Execute" InputGestureText="F5" Click="OnExecute" />
+        <MenuItem Header="Execute _selection" InputGestureText="Ctrl+Enter" Click="OnExecuteSelection" />
+        <MenuItem Header="_Cancel" InputGestureText="Alt+Break" Click="OnCancel" />
+        <Separator />
+        <MenuItem Header="Commit" Click="OnCommit" />
+        <MenuItem Header="Roll back" Click="OnRollback" />
+      </MenuItem>
+      <MenuItem Header="_Connection">
+        <MenuItem Header="_New connection…" Click="OnNewConnection" />
+        <MenuItem Header="_Edit selected…" Click="OnEditConnection" />
+        <MenuItem Header="_Remove selected" Click="OnRemoveConnection" />
+      </MenuItem>
+      <MenuItem Header="_Results">
+        <MenuItem Header="Export to _CSV…" Click="OnExportCsv" />
+        <MenuItem Header="Export to _tab-delimited…" Click="OnExportTsv" />
+        <MenuItem Header="Export to _JSON…" Click="OnExportJson" />
+        <MenuItem Header="Export to _Excel…" Click="OnExportExcel" />
+        <Separator />
+        <MenuItem Header="Copy selection" Click="OnCopySelection" />
+        <MenuItem Header="Fetch more rows" Click="OnFetchMore" />
       </MenuItem>
       <MenuItem Header="_Help">
-        <MenuItem x:Name="AboutMenuItem" Header="_About IMS" Click="OnAbout" />
+        <MenuItem Header="Query _history…" Click="OnShowHistory" />
+        <MenuItem Header="_About IMS" Click="OnAbout" />
       </MenuItem>
     </Menu>
 
     <StatusBar DockPanel.Dock="Bottom">
       <StatusBarItem>
-        <TextBlock x:Name="CsdkStatusText"
-                   AutomationProperties.Name="Client SDK status" />
+        <TextBlock x:Name="CsdkStatusText" AutomationProperties.Name="Client SDK status" />
       </StatusBarItem>
       <Separator />
       <StatusBarItem>
-        <TextBlock x:Name="ConnectionStatusText"
-                   Text="Not connected"
-                   AutomationProperties.Name="Connection status" />
+        <TextBlock Text="{Binding SelectedTab.TargetLabel, FallbackValue='Not connected'}"
+                   AutomationProperties.Name="Target instance" />
+      </StatusBarItem>
+      <Separator />
+      <StatusBarItem>
+        <!-- PR-3.7: transaction state is visible at all times, in words. -->
+        <TextBlock Text="{Binding SelectedTab.TransactionState, Converter={StaticResource TransactionText}}"
+                   AutomationProperties.Name="Transaction state" />
+      </StatusBarItem>
+      <Separator />
+      <StatusBarItem HorizontalAlignment="Right">
+        <TextBlock Text="{Binding StatusText}" AutomationProperties.Name="Status" />
       </StatusBarItem>
     </StatusBar>
 
     <Grid>
-      <StackPanel VerticalAlignment="Center"
-                  HorizontalAlignment="Center"
-                  MaxWidth="560">
-        <TextBlock Style="{StaticResource HeadingText}"
-                   HorizontalAlignment="Center"
-                   Text="Informix Management Studio" />
-        <TextBlock Style="{StaticResource BodyText}"
-                   Margin="0,12,0,0"
-                   TextAlignment="Center"
-                   Text="Slice 0 — foundation. The provider layer, logging and Client SDK detection are in place." />
-        <TextBlock Style="{StaticResource BodyText}"
-                   TextAlignment="Center"
-                   Text="Slice 1 adds connection management, the SQL editor and the result grid." />
-      </StackPanel>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="290" MinWidth="200" />
+        <ColumnDefinition Width="4" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+
+      <!-- Instance list (PR-1.2) -->
+      <DockPanel Grid.Column="0" Margin="6">
+        <TextBox DockPanel.Dock="Top"
+                 Text="{Binding SearchTerm, UpdateSourceTrigger=PropertyChanged}"
+                 Margin="0,0,0,6" Padding="4,3"
+                 AutomationProperties.Name="Search connections" />
+
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
+          <Button Content="C_onnect" Padding="8,3" Margin="0,0,6,0" Click="OnConnect" />
+          <Button Content="_Disconnect" Padding="8,3" Click="OnDisconnect" />
+        </StackPanel>
+
+        <ListBox x:Name="ConnectionList"
+                 ItemsSource="{Binding Connections}"
+                 SelectedItem="{Binding SelectedConnection}"
+                 HorizontalContentAlignment="Stretch"
+                 MouseDoubleClick="OnConnect"
+                 AutomationProperties.Name="Saved connections">
+          <ListBox.ItemTemplate>
+            <DataTemplate>
+              <Grid Margin="2,4">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="*" />
+                  <ColumnDefinition Width="Auto" />
+                </Grid.ColumnDefinitions>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto" />
+                  <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
+
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding DisplayName}" FontWeight="SemiBold" />
+
+                <!-- PR-1.5 and NFR-8: the word is the signal, the colour merely
+                     reinforces it. This must be unmistakable to someone who cannot
+                     tell red from green. -->
+                <Border Grid.Row="0" Grid.Column="1"
+                        Background="{Binding Environment, Converter={StaticResource EnvironmentBrush}}"
+                        CornerRadius="3" Padding="5,1" Margin="6,0,0,0">
+                  <TextBlock Text="{Binding EnvironmentLabel}"
+                             Foreground="White" FontSize="10" FontWeight="Bold"
+                             AutomationProperties.Name="Environment" />
+                </Border>
+
+                <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
+                           Text="{Binding Detail}" FontSize="11" Foreground="#FF5F6368" />
+              </Grid>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+
+      <GridSplitter Grid.Column="1" Width="4" HorizontalAlignment="Stretch"
+                    Background="#FFE0E0E0" />
+
+      <!-- Editor and results -->
+      <Grid Grid.Column="2" Margin="0,6,6,6">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" MinHeight="120" />
+          <RowDefinition Height="4" />
+          <RowDefinition Height="*" MinHeight="120" />
+        </Grid.RowDefinitions>
+
+        <!-- Tab headers only. One editor control is shared between tabs, which keeps
+             a single AvalonEdit instance and its undo stack predictable. -->
+        <TabControl x:Name="TabHeaders" Grid.Row="0"
+                    ItemsSource="{Binding Tabs}"
+                    SelectedItem="{Binding SelectedTab}"
+                    SelectionChanged="OnTabChanged"
+                    BorderThickness="0"
+                    Padding="0" Height="26">
+          <TabControl.ItemTemplate>
+            <DataTemplate>
+              <StackPanel Orientation="Horizontal">
+                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                <Button Content="✕" Margin="6,0,0,0" Padding="3,0" FontSize="10"
+                        BorderThickness="0" Background="Transparent"
+                        Click="OnCloseTab"
+                        AutomationProperties.Name="Close tab" />
+              </StackPanel>
+            </DataTemplate>
+          </TabControl.ItemTemplate>
+          <TabControl.ContentTemplate>
+            <DataTemplate />
+          </TabControl.ContentTemplate>
+        </TabControl>
+
+        <avalonEdit:TextEditor x:Name="Editor" Grid.Row="1"
+                               FontFamily="Consolas" FontSize="13"
+                               ShowLineNumbers="True"
+                               WordWrap="False"
+                               HorizontalScrollBarVisibility="Auto"
+                               VerticalScrollBarVisibility="Auto"
+                               AutomationProperties.Name="SQL editor" />
+
+        <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch"
+                      Background="#FFE0E0E0" />
+
+        <TabControl Grid.Row="3" x:Name="ResultsArea">
+          <TabItem Header="Results">
+            <DockPanel>
+              <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="4">
+                <TextBlock Text="{Binding SelectedTab.SelectedResult.Status}"
+                           VerticalAlignment="Center"
+                           AutomationProperties.Name="Result status" />
+                <Button Content="Fetch _more" Margin="12,0,0,0" Padding="8,2"
+                        Click="OnFetchMore"
+                        Visibility="{Binding SelectedTab.SelectedResult.HasMoreRows,
+                                     Converter={StaticResource BoolToVisibility}}" />
+              </StackPanel>
+
+              <!-- Several result sets kept at once (PR-4.7). Headers only; the grid
+                   below is shared, so its dynamic columns are rebuilt once per
+                   result rather than per tab switch. -->
+              <TabControl x:Name="ResultSetTabs" DockPanel.Dock="Top"
+                          ItemsSource="{Binding SelectedTab.Results}"
+                          SelectedItem="{Binding SelectedTab.SelectedResult}"
+                          SelectionChanged="OnResultSetChanged"
+                          BorderThickness="0" Height="24"
+                          Visibility="{Binding SelectedTab.SelectedResult,
+                                       Converter={StaticResource BoolToVisibility}}">
+                <TabControl.ItemTemplate>
+                  <DataTemplate>
+                    <TextBlock Text="Result" />
+                  </DataTemplate>
+                </TabControl.ItemTemplate>
+                <TabControl.ContentTemplate>
+                  <DataTemplate />
+                </TabControl.ContentTemplate>
+              </TabControl>
+
+              <DataGrid x:Name="ResultGrid"
+                        AutoGenerateColumns="False"
+                        IsReadOnly="True"
+                        CanUserAddRows="False"
+                        CanUserSortColumns="True"
+                        SelectionUnit="CellOrRowHeader"
+                        SelectionMode="Extended"
+                        ClipboardCopyMode="IncludeHeader"
+                        EnableRowVirtualization="True"
+                        EnableColumnVirtualization="True"
+                        VirtualizingPanel.IsVirtualizing="True"
+                        VirtualizingPanel.VirtualizationMode="Recycling"
+                        HeadersVisibility="All"
+                        GridLinesVisibility="All"
+                        FontFamily="Consolas" FontSize="12"
+                        AutomationProperties.Name="Result grid" />
+            </DockPanel>
+          </TabItem>
+
+          <TabItem Header="Messages">
+            <!-- PR-3.4 and PR-3.6: each statement's outcome in sequence, with the
+                 failing one named and its SQLCODE and ISAM error shown. -->
+            <ListBox ItemsSource="{Binding SelectedTab.Outcomes}"
+                     FontFamily="Consolas" FontSize="12"
+                     HorizontalContentAlignment="Stretch"
+                     AutomationProperties.Name="Statement messages">
+              <ListBox.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding Converter={StaticResource OutcomeText}}"
+                             TextWrapping="Wrap" />
+                </DataTemplate>
+              </ListBox.ItemTemplate>
+            </ListBox>
+          </TabItem>
+        </TabControl>
+      </Grid>
     </Grid>
   </DockPanel>
 </Window>

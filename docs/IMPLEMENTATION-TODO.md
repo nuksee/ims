@@ -51,54 +51,64 @@ precisely to settle these; run it once against 12.10 and once against 14.10.
 
 ### 1a. Connection management
 
-- [ ] **M** Connection model + dialog: server name, host, port, protocol, matching `sqlhosts` semantics — PR-1.1
-- [ ] **M** Saved instance list: grouped by environment (Production / UAT / Development), searchable by name. Flat list, no hierarchy — PR-1.2, DEC-7
-- [ ] **M** Auth mode per connection: Local and LDAP/PAM — PR-1.3, DEC-6
-- [ ] **M** Windows Credential Manager integration. No credential ever touches a config file — PR-1.4, DEC-9
-- [ ] **M** Environment indicator: persistent, unmistakable, **not colour-alone** — PR-1.5, NFR-8
-- [ ] **M** Multiple concurrent connections in one workspace; every editor and pane shows its target instance unambiguously — PR-1.6
-- [ ] **M** Dropped-connection detection → clear message → reconnect with editor content intact — PR-1.7
-- [ ] **M** CSDK presence/config check at startup, reported as a prerequisite failure, not a connection failure — PR-1.8, NFR-6
-- [ ] **S** Import `sqlhosts` to populate the instance list — PR-1.9 *(may slip to Slice 4)*
-- [ ] **S** Encrypted connections where the server supports them — PR-1.10 *(may slip to Slice 4)*
-- [ ] **C** SSH tunnel / bastion — PR-1.11 *(only if effectively free)*
+- [x] **M** Connection model + dialog: server name, host, port, protocol, matching `sqlhosts` semantics — PR-1.1
+- [x] **M** Saved instance list: grouped by environment (Production / UAT / Development), searchable. Flat list, no hierarchy — PR-1.2, DEC-7
+- [x] **M** Auth mode per connection: Local and LDAP/PAM — PR-1.3, DEC-6
+- [x] **M** Windows Credential Manager integration. `ConnectionDescriptor` has no password field, so PR-1.4 holds by construction — PR-1.4, DEC-9
+- [x] **M** Environment indicator: a word (`PRODUCTION`/`UAT`/`DEV`) on every list row and in the status bar; colour is secondary — PR-1.5, NFR-8
+- [x] **M** Multiple concurrent connections; every tab shows its target instance — PR-1.6
+- [x] **M** Dropped-connection detection → clear message → editor content kept — PR-1.7 *(the detection path is untested against a real drop)*
+- [x] **M** CSDK check at startup, reported as a prerequisite failure — PR-1.8, NFR-6
+- [x] **S** Import `sqlhosts` — both the registry and the file, not merged — PR-1.9
+- [ ] **S** Encrypted connections — PR-1.10 *(`SECURITY=ssl` is emitted but unverified; flagged in code)*
+- [ ] **C** SSH tunnel / bastion — PR-1.11 *(not started)*
 
 ### 1b. SQL editor
 
-- [ ] **M** Tabbed editor with Informix SQL + SPL syntax highlighting (evaluate AvalonEdit) — PR-3.1
-- [ ] **M** Context-aware completion: schema objects, columns, Informix built-ins — PR-3.2 *(largest single item in the slice; the object-metadata cache it needs is shared with Slice 2)*
-- [ ] **M** Execute whole script or selection only — PR-3.3
-- [ ] **M** Multi-statement execution: statement splitter, per-statement result/error in sequence, failing statement clearly identified — PR-3.4
-- [ ] **M** Cancel a running statement without killing the session or the app — PR-3.5, RSK-6 *(verify the provider actually supports this in the Slice 0 spike)*
-- [ ] **M** Error surface: Informix error code + ISAM error + plain-language explanation — PR-3.6
-- [ ] **M** Transaction state always visible; explicit commit/rollback when autocommit is off — PR-3.7
-- [ ] **M** Warn before `UPDATE`/`DELETE` with no `WHERE` — PR-3.8, RSK-7
-- [ ] **M** Crash-safe autosave of unsaved editor content — PR-3.9, NFR-3
-- [ ] **M** Full keyboard operation: execute, cancel, new tab, switch tab. Follow SSMS bindings — PR-3.10, PR-8.1, NFR-8
-- [ ] **M** Open / save / reopen `.sql` files — PR-3.11
-- [ ] **M** Local query history: statement, target instance, timing, row count, outcome; searchable — PR-3.12, DEC-8
+- [x] **M** Tabbed editor with Informix SQL + SPL highlighting (AvalonEdit; all three comment forms) — PR-3.1
+- [ ] **M** Context-aware completion — PR-3.2 **← the one Must not built.** Needs the object-metadata cache that Slice 2's tree also needs; building it once, in Slice 2, avoids doing it twice
+- [x] **M** Execute whole script or selection only — PR-3.3
+- [x] **M** Multi-statement execution, each outcome in sequence, failing statement identified by index and offset — PR-3.4
+- [x] **M** Cancel: the token reaches the server via `OdbcCommand.Cancel`, not just the await — PR-3.5, RSK-6 *(unverified against a server)*
+- [x] **M** Error surface: SQLCODE + ISAM + explanation, ISAM winning where both exist — PR-3.6
+- [x] **M** Transaction state in the status bar at all times; explicit commit/rollback — PR-3.7
+- [x] **M** Warn before `UPDATE`/`DELETE` with no `WHERE`; literals and comments stripped first — PR-3.8, RSK-7
+- [x] **M** Crash-safe autosave, recovered at next start — PR-3.9, NFR-3
+- [x] **M** Keyboard: F5 execute, Ctrl+Enter selection, Alt+Break cancel, Ctrl+N new tab — PR-3.10, PR-8.1
+- [x] **M** Open / save / reopen `.sql` files — PR-3.11
+- [x] **M** Local searchable query history with target, timing, row count, outcome — PR-3.12, DEC-8
 - [ ] **S** SQL formatter — PR-3.13 *(Slice 4)*
 - [ ] **C** Named snippets — PR-3.14
 
 ### 1c. Result grid
 
-- [ ] **M** Per-column sort, in-grid filter, copy cell / row / selection — PR-4.1
-- [ ] **M** Streaming + paged reads. An unbounded `SELECT` must degrade, not exhaust memory — PR-4.2, NFR-2, RSK-6
-- [ ] **M** Row count and elapsed time per statement — PR-4.3
-- [ ] **M** `NULL` visually distinct from empty string and from zero — PR-4.4
-- [ ] **M** Informix type rendering: `DATETIME` with qualifier, `INTERVAL`, `DECIMAL`, `MONEY`, `BOOLEAN`; `BYTE`/`TEXT`/smart LOBs as a viewable value, never raw bytes in a cell — PR-4.5
-- [ ] **M** Export result set or selection to CSV, delimited text, JSON, Excel — PR-4.6
-- [ ] **S** Keep concurrent result sets from several statements/tabs — PR-4.7 *(Slice 4)*
+- [x] **M** Per-column sort and copy of cell/row/selection — PR-4.1 *(in-grid filter not built; see below)*
+- [x] **M** Streaming + paged reads, 500 rows at a time, with "fetch more" — PR-4.2, NFR-2, RSK-6
+- [x] **M** Row count and elapsed time per statement — PR-4.3
+- [x] **M** `NULL` renders as italic `(null)` — a shape difference, not a colour one — PR-4.4, NFR-8
+- [x] **M** Informix type rendering through `InformixValue`; large objects as a placeholder, never bytes in a cell — PR-4.5
+- [x] **M** Export to CSV, tab-delimited, JSON and Excel — PR-4.6
+- [x] **S** Concurrent result sets kept per tab — PR-4.7 *(came free with the design)*
 - [ ] **S** Generate `INSERT` statements from a result set — PR-4.8 *(Slice 4)*
 - [ ] **S** Vertical single-row view — PR-4.9 *(Slice 4)*
+- [ ] **M** In-grid filter — part of PR-4.1, **not built**
 
 ### 1d. Slice 1 exit checks
 
-- [ ] Run the full §5 acceptance script against 12.10 **and** 14.10 — RSK-9
-- [ ] Verify 1,000,000+ row result set stays responsive — NFR-2
-- [ ] Verify 200 ms input acknowledgement on every interactive action — NFR-1, PR-8.5
-- [ ] Kill the process mid-edit; confirm content recovers — PR-3.9
-- [ ] Audit logs for leaked credentials or result data — PR-6.3
+Verified on the development workstation, with no database:
+
+- [x] Release build clean with `TreatWarningsAsErrors`
+- [x] 273 tests pass; no test opens a socket
+- [x] The app starts, renders the shell, and logs the detected Client SDK
+- [x] No credential or result data reaches the log — redaction enforced at the boundary and tested — PR-6.3
+
+Still open, because each needs a live server:
+
+- [ ] The full §5 acceptance script against 12.10 **and** 14.10 — RSK-9
+- [ ] A 1,000,000+ row result set stays responsive — NFR-2 *(DEP-3 also unmet)*
+- [ ] 200 ms input acknowledgement under real load — NFR-1, PR-8.5
+- [ ] Cancel a long-running statement and keep the session — PR-3.5
+- [ ] Kill the process mid-edit against a live session and confirm recovery — PR-3.9 *(the autosave itself is tested)*
 
 ---
 
