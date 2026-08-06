@@ -190,7 +190,36 @@ Still open, because each needs a live server:
 ## Slice 4 — Refine
 
 No fixed contents by design — this is where scope shrinks. Pull items in only if daily use
-has proven they're missed: PR-1.9, PR-1.10, PR-2.9, PR-2.10, PR-3.13, PR-4.7, PR-4.8, PR-4.9.
+has proven they're missed: PR-1.10, PR-2.9, PR-2.10, PR-3.13, PR-4.8, PR-4.9.
+
+### UX polish **[infra]**
+
+Small affordances with no PRD requirement behind them. They are recorded here rather than in
+PRD §8 because §8 is the pressure valve for *capabilities* (RSK-2), and sizing these as
+deferred scope would overstate them. None is a Must; none should displace a Must.
+
+- [ ] Middle-click a tab header to close it — a second affordance over the existing ✕, which
+  already calls `MainViewModel.CloseTabAsync`. A `MouseDown` handler on the tab-header
+  `DataTemplate` checking `ChangedButton == MiddleButton`. Must go through the same close path,
+  so the PR-3.9 autosave and any unsaved-content prompt still apply — a close route that
+  bypasses them would be a data-loss bug, not a shortcut
+- [ ] **Switch the bottom pane to Messages when a statement fails** — arguably a **PR-3.4
+  refinement** rather than polish: PR-3.4 requires "indicating clearly which statement failed",
+  and today the failure is written into `Outcomes` (the Messages list) while the pane stays on
+  Results, so the user has to know to go looking for it. `ExecuteAsync` already counts `failed`
+  but it is a local, so this needs a bound signal — e.g. an `AnyFailed` property on
+  `EditorTabViewModel`, with `ResultsArea` selecting the Messages `TabItem` in response.
+  **Decide the partial-failure case first:** when statement 2 of 5 fails but the others returned
+  rows, switching away steals a pane the user is about to read. Recommend switching only when no
+  result set was produced, and otherwise leaving the pane alone — the status bar already says
+  "N of M statement(s) failed", so the failure is not silent either way. Auto-switching
+  unconditionally is the version most likely to become annoying in daily use
+- [ ] **Close the tab from the keyboard (Ctrl+W or Ctrl+F4)** — arguably a **PR-3.10 gap**, not
+  polish: PR-3.10 requires full keyboard operation of "execute, cancel, new tab, switch tab",
+  and closing is absent from that list *and* from the gestures registered in `MainWindow.xaml.cs`.
+  So a tab can currently only be closed with the mouse, which also puts NFR-8's keyboard
+  operability at risk. Worth deciding whether PR-3.10 should name it — if so this leaves
+  Slice 4 and becomes an **M** in §1b
 
 ---
 
