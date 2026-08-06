@@ -113,7 +113,10 @@ library enters the dependency graph.
 - **ODBC, not the .NET provider.** The CSDK's bundled `IBM.Data.Informix.dll` ships only for .NET
   Framework 2.0 (`bin\netf20`) and cannot load in .NET 9, so IMS uses `System.Data.Odbc` over the
   registered Informix ODBC driver. This still speaks the native SQLI protocol.
-- **Informix 12.10 and 14.10 supported**, by capability detection rather than version branching.
+- **Informix 14.10 supported.** Tested against 14.10. 12.10 was descoped for v1 on
+  2026-08-06: it is untested, not refused. Because IMS detects capabilities rather than branching on
+  version number, a 12.10 server may work and should degrade rather than fail — but nothing about it
+  has been verified, so treat it as unsupported.
 - **Credentials live in Windows Credential Manager**, never in a config file.
 - **No telemetry**, enforced by test rather than by intention.
 

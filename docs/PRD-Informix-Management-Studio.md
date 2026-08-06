@@ -68,7 +68,7 @@ Settled deliberately. Each carries its rationale, because the rationale is the p
 | DEC-2 | **IMS issues no administrative writes of its own.** Users may execute any SQL their Informix privileges permit, including DML and DDL. Gating is done by Informix, not by IMS. | The single most valuable constraint in this document. It removes the need for a confirmation framework, an IMS role model, and an audit store — and it is what makes IMS safe to hand to a colleague and safe to point at production. Developers keep their normal workflow because they keep their normal privileges. |
 | DEC-3 | **Windows desktop application, .NET / WPF.** | Closest to the SSMS experience the intended users already know; best fit for the Informix .NET provider; Windows is the client platform in use. |
 | DEC-4 | **IBM Informix .NET provider or ODBC, via the Informix Client SDK.** | Richest access to Informix-specific features and error detail. *Confirmed: CSDK is already installed on the target workstations, so this carries no deployment dependency.* |
-| DEC-5 | **Informix 12.10 and 14.10 supported.** | The two versions actually in the estate. Detect capabilities rather than branching on version number, so a third version later costs little. |
+| DEC-5 | **Informix 14.10 supported. 12.10 descoped for v1 (2026-08-06).** | 14.10 is the version IMS can be tested against. 12.10 remains in the estate and is not *refused* — capability detection, not version branching, means it may well work — but it is untested and unsupported until someone verifies it. Detecting capabilities rather than branching on version number keeps the cost of restoring it, or adding a third version, low. |
 | DEC-6 | **Local and LDAP/PAM-backed authentication, selectable per connection.** | The estate uses both. |
 | DEC-7 | **Designed for under 10 instances.** | A grouped, searchable flat list suffices. No folder hierarchy, no tagging, no inventory sync. |
 | DEC-8 | **No tamper-proof audit trail.** Local, user-visible query history only. | Follows directly from DEC-2 — IMS takes no privileged action of its own, so there is nothing IMS-specific to audit. Informix's own logging remains the record. Revisit the moment any §8 admin capability lands. |
@@ -99,7 +99,7 @@ v1 is [§6](#6-requirements) in full. It is built and released as four slices, e
 
 Connection management, SQL editor, execution and cancellation, result grid, query history. No object tree yet; you type SQL.
 
-**Done when:** you can register a connection, open an editor, run a multi-statement script, cancel a long-running one without killing the app, see results in a sortable grid, export them to CSV, and find yesterday's statement in history — against both a 12.10 and a 14.10 server. Unsaved editor content survives killing the process.
+**Done when:** you can register a connection, open an editor, run a multi-statement script, cancel a long-running one without killing the app, see results in a sortable grid, export them to CSV, and find yesterday's statement in history — against a 14.10 server (DEC-5; 12.10 descoped). Unsaved editor content survives killing the process.
 
 > This slice alone should be enough to stop using `dbaccess` for ad-hoc SQL. If it isn't, something in [§7](#7-design-principles) is being violated — most likely PR-8.5.
 
@@ -223,7 +223,7 @@ The Should-priority items across §6: SQL formatting, whole-database schema scri
 | NFR-1 | Responsiveness | Interactive actions acknowledge input within 200 ms. The UI never blocks on server or network work. See PR-8.5 — this is a functional requirement, not polish |
 | NFR-2 | Scale | Usable against a database of 20,000+ objects and a result set of 1,000,000+ rows |
 | NFR-3 | Stability | No unhandled termination across a full working day of real use; unsaved editor content survives one if it happens (PR-3.9) |
-| NFR-4 | Compatibility | Informix 12.10 and 14.10 (DEC-5). Where a capability is unavailable, degrade gracefully with a clear explanation rather than failing opaquely |
+| NFR-4 | Compatibility | Informix 14.10 (DEC-5). Where a capability is unavailable, degrade gracefully with a clear explanation rather than failing opaquely. This requirement now carries the 12.10 risk alone: nothing may branch on a version number, so that an untested 12.10 server degrades rather than fails |
 | NFR-5 | Platform | Windows 10 and 11, 64-bit. Don't gratuitously preclude a later cross-platform client (DEC-10) |
 | NFR-6 | Prerequisites | Informix Client SDK required, not bundled (DEC-4, DEC-10) |
 | NFR-7 | Deployment | Installable and updatable without per-user local administrator rights |
@@ -284,14 +284,14 @@ SPL debugging with breakpoints; performance baselining and historical comparison
 | AS-3 | `sysmaster` is readable by the intended users, or a suitable role can be granted | Slice 3 serves only U2/U3 — see Q-1 |
 | AS-4 | Windows 10/11 throughout | Cross-platform moves from Tier 3 into v1 |
 
-*Closed since v0.2:* CSDK availability (confirmed installed), Credential Manager acceptability (confirmed), version matrix (12.10 and 14.10), development instance availability (work instances).
+*Closed since v0.2:* CSDK availability (confirmed installed), Credential Manager acceptability (confirmed), version matrix (12.10 and 14.10 — *narrowed to 14.10 alone on 2026-08-06, see DEC-5*), development instance availability (work instances).
 
 ### 9.2 Dependencies
 
 | ID | Dependency |
 |---|---|
 | DEP-1 | IBM Informix Client SDK and .NET/ODBC provider — installed, but note the DEC-10 non-redistribution constraint |
-| DEP-2 | A non-production instance at each of 12.10 and 14.10 for development and testing |
+| DEP-2 | A non-production **14.10** instance for development and testing. Met — `demo_srv`, 14.10. The 12.10 half of this dependency is withdrawn with DEC-5's descope |
 | DEP-3 | A schema of realistic size to test NFR-2 against |
 | DEP-4 | `sysmaster` read access for Slice 3 (AS-3) |
 
@@ -307,7 +307,7 @@ SPL debugging with breakpoints; performance baselining and historical comparison
 | RSK-6 | An unbounded `SELECT` hangs the client | Medium | Medium | PR-4.2 streaming and paging, PR-3.5 cancellation. Both are Slice 1 |
 | RSK-7 | A user runs a destructive statement unintentionally | Medium | Medium | PR-3.8 and PR-1.5. Note this risk is no worse than `dbaccess` today, and Informix privileges remain the real control (DEC-2) |
 | RSK-8 | U3 dismisses it and that shapes colleagues' view | Medium | Low | PR-8.2 and PR-8.3. Make no claim that v1 replaces the CLI, because it doesn't |
-| RSK-9 | Version differences between 12.10 and 14.10 cost more than expected | Low | Medium | Capability detection, not version branching (NFR-4). Test both from Slice 1 onward, not at the end |
+| RSK-9 | A 12.10 server in the estate meets an IMS tested only against 14.10 | Medium | Medium | **The original mitigation — test both from Slice 1 onward — is withdrawn with DEC-5's descope, so likelihood rises from Low.** What remains: capability detection, not version branching (NFR-4), so an absent catalogue feature degrades rather than fails; and stating the tested version plainly, so nobody on 12.10 believes they are on a supported path |
 
 ---
 

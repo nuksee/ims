@@ -6,7 +6,8 @@
     Not shipped with IMS. Its job is to answer, against a real non-production
     instance, the questions that cannot be answered without one: cancellation
     (PR-3.5), streaming (PR-4.2), type fidelity (PR-4.5), error detail
-    (PR-3.6), 12.10-vs-14.10 differences (RSK-9), and sysmaster readability
+    (PR-3.6), cross-version differences (RSK-9, if a second version is ever
+    available — 12.10 was descoped by DEC-5), and sysmaster readability
     (Q-1, which gates Slice 3).
   -->
 

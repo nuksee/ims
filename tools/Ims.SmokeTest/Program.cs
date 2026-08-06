@@ -195,7 +195,9 @@ internal static class Program
 
             Answers, against a real non-production Informix instance, the questions
             that Slice 0 cannot settle on a developer workstation alone. Run it once
-            against 12.10 and once against 14.10 (DEP-2, RSK-9).
+            against 14.10 (DEP-2). 12.10 was descoped on 2026-08-06 (DEC-5), so a
+            12.10 run is no longer required — but this tool still answers RSK-9 if
+            an instance ever becomes available.
 
             USAGE
               Ims.SmokeTest --server <name> --host <host> --service <port>

@@ -528,7 +528,7 @@ public sealed class InformixOdbcSession : IInformixSession
     /// </summary>
     /// <remarks>
     /// Justified under PR-6.2 as a documented consequence of connecting: NFR-4 needs
-    /// it to degrade gracefully across 12.10 and 14.10, and PR-5.6 shows it. Every
+    /// it to degrade gracefully on any server version reached, and PR-5.6 shows it. Every
     /// other capability is probed lazily, when a feature actually needs it, rather
     /// than speculatively at connect time.
     /// </remarks>

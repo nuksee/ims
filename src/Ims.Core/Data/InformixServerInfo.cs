@@ -5,10 +5,17 @@ namespace Ims.Core.Data;
 /// </summary>
 /// <remarks>
 /// <para>
-/// NFR-4 and RSK-9 both say the same thing in different words: support 12.10 and
-/// 14.10 by <em>detecting capabilities rather than branching on version number</em>,
-/// so that a third version later costs little. This type is where that discipline
-/// lives — call sites ask <see cref="Supports"/>, not "is this 14.10?".
+/// NFR-4 and RSK-9 both say the same thing in different words: <em>detect capabilities
+/// rather than branching on version number</em>, so that another version later costs
+/// little. This type is where that discipline lives — call sites ask
+/// <see cref="Supports"/>, not "is this 14.10?".
+/// </para>
+/// <para>
+/// That discipline became load-bearing on 2026-08-06, when DEC-5 narrowed v1 to 14.10
+/// and descoped 12.10. 12.10 is untested, not refused: because nothing branches on the
+/// version number, a 12.10 server should degrade on an absent catalogue feature rather
+/// than fail. Introducing a version comparison here would turn that soft landing into a
+/// hard one.
 /// </para>
 /// <para>
 /// The version is still recorded, because PR-5.6 wants to show it and because a

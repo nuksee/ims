@@ -20,7 +20,7 @@ must be usable alone, and this one isn't, so it should be measured in days not w
 - [x] Local logging via `FileLoggerProvider`, wrapped in `RedactingLoggerProvider` so PR-6.3 holds at one boundary rather than at every call site — NFR-10, PR-6.3
 - [x] `DependencyPolicyTests` fails the build if a telemetry package or a redistributed IBM client library enters the graph — PR-6.5, DEC-10
 - [x] CI: GitHub Actions, `windows-latest`, Release build + test on push. No CI job connects to a server
-- [ ] **Run `Ims.SmokeTest` against non-prod 12.10 and 14.10** — the spike is written but unrun; see "Blocked on a live server" below — DEP-2, RSK-9
+- [x] **Run `Ims.SmokeTest` against non-prod 14.10** — run against `demo_srv`, 14.10; results below. 12.10 descoped (DEC-5) — DEP-2, RSK-9
 - [ ] Secure DEP-3 (a realistic-size schema for NFR-2)
 
 ### Answered by the smoke test — against `demo_srv`, Informix **14.10**
@@ -58,11 +58,12 @@ to be equally unmapped.
 
 ### Still blocked on a live server
 
-- [x] ~~Run against a **12.10** instance~~ — **descoped by the owner, 2026-08-06.** Only 14.10
-  is verified. This weakens RSK-9's stated mitigation ("test both from Slice 1 onward, not at
-  the end"), so NFR-4's capability detection now carries that risk alone: nothing may branch
-  on a version number, and any catalogue feature absent in 12.10 must degrade rather than
-  fail. DEC-5 still lists 12.10 as supported — it is simply supported untested
+- [x] ~~Run against a **12.10** instance~~ — **descoped by the owner, 2026-08-06, and 12.10 is now
+  out of v1 scope entirely.** DEC-5, NFR-4, DEP-2, RSK-9 and the README have been updated to say
+  14.10 only. This withdraws RSK-9's stated mitigation ("test both from Slice 1 onward, not at the
+  end"), so NFR-4's capability detection carries that risk alone: nothing may branch on a version
+  number, and any catalogue feature absent in 12.10 must degrade rather than fail. 12.10 is untested
+  and unsupported — not refused; restoring it is a testing exercise, not a code change
 - [ ] Cancellation: does `OdbcCommand.Cancel()` leave the session usable? — PR-3.5 *(needs `--include-load`, so a non-production instance)*
 - [ ] Streaming: does the driver stream or buffer? — PR-4.2, RSK-6 *(same)*
 - [ ] ISAM error reporting, via a lock conflict or constraint violation — PR-3.6
@@ -75,7 +76,7 @@ to be equally unmapped.
 
 > **Acceptance (PRD §5):** register a connection, open an editor, run a multi-statement
 > script, cancel a long-running one without killing the app, sortable result grid, CSV
-> export, find yesterday's statement in history — against both 12.10 and 14.10. Unsaved
+> export, find yesterday's statement in history — against 14.10 (12.10 descoped, DEC-5). Unsaved
 > editor content survives killing the process.
 >
 > This is the real deliverable (RSK-1). If it doesn't stop you reaching for `dbaccess`, it isn't done.
@@ -170,7 +171,7 @@ Verified on the development workstation, with no database:
 
 Still open, because each needs a live server:
 
-- [ ] The full §5 acceptance script against 12.10 **and** 14.10 — RSK-9
+- [ ] The full §5 acceptance script against **14.10** — RSK-9 *(12.10 descoped, DEC-5)*
 - [ ] A 1,000,000+ row result set stays responsive — NFR-2 *(DEP-3 also unmet)*
 - [ ] 200 ms input acknowledgement under real load — NFR-1, PR-8.5
 - [ ] Cancel a long-running statement and keep the session — PR-3.5
