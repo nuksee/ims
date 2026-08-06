@@ -111,25 +111,44 @@ to be equally unmapped.
   does not reach this server at all.** PR-3.5's "the token reaches the server via
   `OdbcCommand.Cancel`" is unmet, and no amount of statement-shaping will change it.
 
-  What is still untried, cheapest first:
+  **Both single-connection routes are now closed.**
 
-  1. **`SQL_ATTR_ASYNC_ENABLE`** — `System.Data.Odbc` executes synchronously by default, and
-     `SQLCancel` on a synchronous handle is documented as taking effect only for a small number
-     of states. This is the most likely explanation and needs a spike, not a redesign.
-     **Written (`AsyncCancelSpike`), unrun against Informix.** It runs with the other load
-     probes: sets the attribute via `SQLSetConnectAttr`, checks it reads back, then runs the
-     *same* scanning statement the synchronous probe uses and cancels it, so the two results
-     are directly comparable. The plumbing was verified against a local ODBC driver — handle
-     resolution, the P/Invoke, and reading the driver's own diagnostic all work; that driver
-     answers `HYC00 Optional feature not implemented`, and whether Informix says the same is
-     the open question. A rejection is as useful as an acceptance: it closes the route.
-     The spike reaches the connection handle by reflection over `System.Data.Odbc` internals,
-     which is fine for answering a question and **not** a route IMS itself can take
-  2. **The CSDK's own interrupt settings** — `INFORMIXCONTIME`/`INFORMIXCONRETRY` do not apply,
-     but the driver has a `SQL_INFX_ATTR_LO_AUTOMATIC`-style family worth reading for an
-     interrupt or cancel option
-  3. **A second connection issuing an administrative cancel** — the fallback. Costs the extra
-     session PR-6.4 asks IMS not to add, so it should not be built while (1) is untested
+  1. ~~`SQL_ATTR_ASYNC_ENABLE`~~ — **ruled out, measured 2026-08-06.** `System.Data.Odbc`
+     executes synchronously, and `SQLCancel` against a synchronous handle is documented to
+     take effect only in limited states, which fitted what was observed. The driver refuses
+     the attribute outright: `SQLSetConnectAttr` returns `-1` with
+     `HYC00, native -11097: Optional feature not implemented`. Asynchronous execution is not
+     available over this driver at all, so it cannot be what makes `Cancel()` work. The spike
+     (`AsyncCancelSpike`) is kept — it is one cheap statement and re-answers the question after
+     a CSDK upgrade
+  2. **The CSDK's own interrupt settings** — the remaining unexamined idea, and a thin one.
+     `INFORMIXCONTIME`/`INFORMIXCONRETRY` govern connection attempts, not running statements.
+     Worth one read of the CSDK's connection-attribute list for an interrupt option before
+     accepting (3), but do not expect much
+  3. **A second connection issuing an administrative cancel** — now the only route that is
+     known to be able to work, and it costs the extra session PR-6.4 asks IMS not to add.
+     **This is a decision for the owner, not a default.** See below
+
+### What PR-3.5 costs now — a decision, not a task
+
+Every cheap route is closed, so the options are all uncomfortable. None should be picked by
+whoever next opens the file; this needs the owner.
+
+| Option | What the user gets | What it costs |
+|---|---|---|
+| **A. Second connection, administrative cancel** | Cancel works as PR-3.5 specifies | Breaks PR-6.4 (a second session per instance) and strains PR-6.2 (IMS issues a statement the user did not type). Needs the user's own privileges to cancel their own session — unverified |
+| **B. Remove the cancel gesture** | An honest UI: no button that lies | PR-3.5 unmet and visible. RSK-1 suffers — a runaway statement means killing the tab or the app |
+| **C. Keep it, tell the truth** | Alt+Break stops IMS waiting; a message says the statement continues server-side and names `onmode -z` | Cheapest by far, honest, and leaves the statement running. PR-3.5 still unmet |
+| **D. Do nothing** | A cancel button that silently does nothing | Not acceptable. This is today's behaviour and it misleads |
+
+**Recommendation: C now, A only if daily use proves it necessary.** C is small, removes the
+lie, and keeps PR-6.2/PR-6.4 intact; it also matches PR-8.2's habit of naming the `onstat`/
+`onmode` equivalent rather than hiding the server. A is a real design with a privilege question
+behind it (can an ordinary developer cancel their own session?) that is itself unmeasured — and
+Q-1 already showed that assumption is worth testing rather than believing.
+
+Whichever is chosen, **D must not ship**. The gesture currently returns control while the
+statement runs on, and that is worse than having no cancel at all
 - [x] Streaming: does the driver stream or buffer? — PR-4.2, RSK-6. **It streams.** 20,000 rows
   in 1090 ms, first row after 69 ms, managed heap flat. Bounded run, so this is the driver's
   behaviour at that size and says nothing about NFR-2's million rows
@@ -176,8 +195,9 @@ to be equally unmapped.
   reach the server: two statements, one slow by sorting and one by scanning, both ran on to
   their 30s timeout ~30s after the cancel. The session survives, so PR-3.5's second half holds
   and only the first fails. **The gesture is worse than absent** — Alt+Break returns control
-  while the statement keeps running, and the user has no way to tell. Try
-  `SQL_ATTR_ASYNC_ENABLE` before the second-connection fallback; see Slice 0
+  while the statement keeps running, and the user has no way to tell. `SQL_ATTR_ASYNC_ENABLE`
+  was the cheap hope and is ruled out: the driver does not implement it. See Slice 0's
+  "What PR-3.5 costs now" — this needs a decision before it needs code
 - [x] **M** Error surface: SQLCODE + ISAM + explanation, ISAM winning where both exist — PR-3.6
 - [x] **M** Transaction state in the status bar at all times; explicit commit/rollback — PR-3.7
 - [x] **M** Warn before `UPDATE`/`DELETE` with no `WHERE`; literals and comments stripped first — PR-3.8, RSK-7

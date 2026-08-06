@@ -198,11 +198,20 @@ public sealed class InformixOdbcSession : IInformixSession
     /// <para>
     /// So this method currently returns without stopping anything, and the UI's cancel
     /// gesture is misleading rather than merely ineffective — it returns control while
-    /// the statement runs on. Before adopting the second-connection fallback, try
-    /// <c>SQL_ATTR_ASYNC_ENABLE</c>: System.Data.Odbc executes synchronously, and
+    /// the statement runs on.
+    /// </para>
+    /// <para>
+    /// The cheaper explanation has since been ruled out. <c>SQL_ATTR_ASYNC_ENABLE</c>
+    /// looked likely, because System.Data.Odbc executes synchronously and
     /// <c>SQLCancel</c> against a synchronous handle is documented to take effect only
-    /// in limited states. That is a spike, not a redesign, and it is the cheaper
-    /// explanation.
+    /// in limited states — but the driver refuses the attribute outright
+    /// (<c>HYC00 -11097, Optional feature not implemented</c>), so asynchronous
+    /// execution is not available here at all. See <c>AsyncCancelSpike</c> in the smoke
+    /// test. Both single-connection routes are therefore closed, and what remains is a
+    /// second connection issuing an administrative cancel — which costs the session
+    /// PR-6.4 asks IMS not to add, and so is the owner's call rather than an
+    /// implementation detail. Until that is decided, do not make this method appear to
+    /// succeed.
     /// </para>
     /// </remarks>
     public Task CancelAsync(CancellationToken cancellationToken)
