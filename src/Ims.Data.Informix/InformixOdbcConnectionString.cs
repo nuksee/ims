@@ -52,10 +52,13 @@ public static class InformixOdbcConnectionString
         builder["Service"] = descriptor.Service;
         builder["Protocol"] = descriptor.Protocol;
 
-        if (!string.IsNullOrWhiteSpace(descriptor.Database))
-        {
-            builder["Database"] = descriptor.Database;
-        }
+        // The Database keyword must be PRESENT, even when empty. Omitting it makes
+        // the CSDK ODBC driver fail with -11060 "General error" before it attempts
+        // any network I/O — which reads as a connection problem and is not one.
+        // Measured against the 4.10 driver: no Database => -11060; Database= (empty)
+        // => -908, i.e. a real connection attempt. Connecting at instance level
+        // rather than to a named database is legitimate, so an empty value is right.
+        builder["Database"] = descriptor.Database ?? string.Empty;
 
         if (!string.IsNullOrWhiteSpace(descriptor.UserName))
         {
@@ -81,16 +84,27 @@ public static class InformixOdbcConnectionString
 
         if (descriptor.ConnectTimeoutSeconds > 0)
         {
-            builder["CONNECT_TIMEOUT"] = descriptor.ConnectTimeoutSeconds.ToString(
+            // "Connection Timeout" is handled by System.Data.Odbc itself, which maps
+            // it to SQL_ATTR_LOGIN_TIMEOUT. CONNECT_TIMEOUT was tried first and is
+            // not a driver keyword at all — the driver ignores keywords it does not
+            // know, so the timeout was silently never applied.
+            builder["Connection Timeout"] = descriptor.ConnectTimeoutSeconds.ToString(
                 System.Globalization.CultureInfo.InvariantCulture);
         }
 
+        // PR-1.10 (encrypted connections) is deliberately NOT attempted here. The
+        // driver ignores unrecognised keywords rather than rejecting them, so an
+        // invented SECURITY=ssl would appear to work while doing nothing at all —
+        // the worst possible outcome for a security feature, and exactly what
+        // PR-8.4 warns about. Informix encryption is configured through the
+        // sqlhosts CSM option on the server side; wiring that up is Slice 4 work
+        // and needs a server configured for it to verify against.
         if (descriptor.UseEncryption)
         {
-            // PR-1.10 is a Should, scheduled for Slice 4. The keyword below is the
-            // documented CSDK form but has NOT been verified against a server that
-            // has encryption configured — Ims.SmokeTest is where that gets settled.
-            builder["SECURITY"] = "ssl";
+            throw new NotSupportedException(
+                "Encrypted connections (PR-1.10) are not implemented. The CSDK ODBC driver "
+                + "silently ignores unknown connection-string keywords, so IMS will not pretend "
+                + "to enable encryption it cannot verify. Configure the CSM in sqlhosts instead.");
         }
 
         return builder.ConnectionString;

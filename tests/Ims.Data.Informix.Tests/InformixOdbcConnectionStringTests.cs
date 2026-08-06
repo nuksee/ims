@@ -49,14 +49,56 @@ public class InformixOdbcConnectionStringTests
     }
 
     [Fact]
-    public void Omits_optional_parts_that_were_not_supplied()
+    public void Always_emits_Database_even_when_there_is_none()
+    {
+        // Measured against the CSDK 4.10 driver: omitting the Database keyword makes
+        // it fail with -11060 "General error" before any network I/O, which reads as
+        // a connection problem and is not one. Present-but-empty gives a real
+        // connection attempt. Connecting at instance level is legitimate, so the
+        // keyword has to be there with an empty value.
+        //
+        // This is the bug the first smoke-test run against a real server found.
+        string connectionString = InformixOdbcConnectionString.Build(
+            Descriptor(database: null, user: null), DriverName, password: null);
+
+        connectionString.Should().Contain("Database=");
+    }
+
+    [Fact]
+    public void Omits_credentials_that_were_not_supplied()
     {
         string connectionString = InformixOdbcConnectionString.Build(
             Descriptor(database: null, user: null), DriverName, password: null);
 
-        connectionString.Should().NotContain("Database=");
         connectionString.Should().NotContain("Uid=");
         connectionString.Should().NotContain("Pwd=");
+    }
+
+    [Fact]
+    public void Uses_the_timeout_keyword_the_ODBC_provider_actually_honours()
+    {
+        // CONNECT_TIMEOUT is not a driver keyword, and the driver ignores keywords
+        // it does not recognise rather than rejecting them — so the original spelling
+        // silently did nothing. "Connection Timeout" is handled by System.Data.Odbc.
+        string connectionString = InformixOdbcConnectionString.Build(
+            Descriptor(), DriverName, password: null);
+
+        connectionString.Should().Contain("Connection Timeout=15");
+        connectionString.Should().NotContain("CONNECT_TIMEOUT");
+    }
+
+    [Fact]
+    public void Refuses_to_pretend_it_can_encrypt()
+    {
+        // The driver ignores unknown keywords, so emitting SECURITY=ssl would look
+        // like encryption while providing none. PR-8.4: a half-implemented
+        // capability is worse than an absent one, and most of all for this one.
+        ConnectionDescriptor descriptor = Descriptor() with { UseEncryption = true };
+
+        Action act = () => InformixOdbcConnectionString.Build(descriptor, DriverName, null);
+
+        act.Should().Throw<NotSupportedException>()
+            .WithMessage("*not implemented*");
     }
 
     [Fact]

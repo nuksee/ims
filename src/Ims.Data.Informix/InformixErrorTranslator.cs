@@ -163,6 +163,10 @@ public static class InformixErrorTranslator
                 + "column's qualifier and the DBDATE setting.",
             -1213 => "A value that is not a number was used where a number was expected.",
             -1215 or -1226 => "A numeric value is too large for the column it is going into.",
+            -11060 => "The ODBC driver rejected the connection string before trying to connect. "
+                      + "This is a client-side problem, not a server one — most often a required "
+                      + "keyword is missing rather than wrong, since the driver ignores keywords "
+                      + "it does not recognise.",
             0 => null,
             _ => null,
         };
