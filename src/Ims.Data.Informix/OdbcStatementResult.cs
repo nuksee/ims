@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Odbc;
 using System.Runtime.CompilerServices;
 using Ims.Core.Data;
+using Ims.Core.Diagnostics;
 
 namespace Ims.Data.Informix;
 
@@ -80,6 +81,12 @@ internal sealed class OdbcStatementResult : IStatementResult
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+
+        // Reading rows is a server round trip like any other, and System.Data.Odbc
+        // has no true async — ReadAsync runs synchronously underneath. Without this
+        // assertion a caller could drain a result set on the dispatcher and freeze
+        // the UI, which is exactly the NFR-1 failure the guard exists to prevent.
+        ServerCallGuard.AssertNotOnUiThread("Read result rows");
 
         while (await _reader.ReadAsync(cancellationToken).ConfigureAwait(false))
         {

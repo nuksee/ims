@@ -86,23 +86,46 @@ public sealed partial class ResultSetViewModel : ObservableObject, IAsyncDisposa
 
         try
         {
-            _enumerator ??= _result.ReadRowsAsync(cancellationToken).GetAsyncEnumerator(cancellationToken);
+            long firstRowNumber = Rows.Count;
 
-            var page = new List<ResultRowViewModel>(PageSize);
-            long rowNumber = Rows.Count;
-
-            while (page.Count < PageSize)
-            {
-                if (!await _enumerator.MoveNextAsync().ConfigureAwait(true))
+            // The whole page is read off the dispatcher. System.Data.Odbc has no
+            // true async — ReadAsync is synchronous underneath — so resuming on the
+            // UI thread between rows would block it for the length of the fetch.
+            // NFR-1 makes that a defect, not a rough edge, and ServerCallGuard now
+            // throws if anyone tries it.
+            (List<ResultRowViewModel> page, bool exhausted) = await Task.Run(
+                async () =>
                 {
-                    HasMoreRows = false;
-                    break;
-                }
+                    _enumerator ??= _result
+                        .ReadRowsAsync(cancellationToken)
+                        .GetAsyncEnumerator(cancellationToken);
 
-                page.Add(new ResultRowViewModel(_enumerator.Current, ++rowNumber));
+                    var rows = new List<ResultRowViewModel>(PageSize);
+                    long rowNumber = firstRowNumber;
+                    var done = false;
+
+                    while (rows.Count < PageSize)
+                    {
+                        if (!await _enumerator.MoveNextAsync().ConfigureAwait(false))
+                        {
+                            done = true;
+                            break;
+                        }
+
+                        rows.Add(new ResultRowViewModel(_enumerator.Current, ++rowNumber));
+                    }
+
+                    return (rows, done);
+                },
+                cancellationToken).ConfigureAwait(true);
+
+            if (exhausted)
+            {
+                HasMoreRows = false;
             }
 
-            // Added on the UI thread, which is where the await resumed.
+            // Back on the UI thread, which is where an ObservableCollection must be
+            // mutated.
             foreach (ResultRowViewModel row in page)
             {
                 Rows.Add(row);
