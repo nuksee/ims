@@ -22,6 +22,7 @@
     <local:CountToVisibilityConverter x:Key="CountToVisibility" />
     <local:NotNullToBooleanConverter x:Key="NotNullToBool" />
     <local:NullToVisibilityConverter x:Key="NullToVisibility" />
+    <local:JoinListConverter x:Key="JoinList" />
     <local:EnvironmentBrushConverter x:Key="EnvironmentBrush" />
     <local:TransactionStateConverter x:Key="TransactionText" />
     <local:StatementOutcomeConverter x:Key="OutcomeText" />
@@ -231,6 +232,9 @@
               <MenuItem Header="_SELECT first 100 rows"
                         Click="OnSelectFirstRows"
                         IsEnabled="{Binding ObjectTree.CanSelectRows, FallbackValue=False}" />
+              <MenuItem Header="Show _detail"
+                        Click="OnShowObjectDetail"
+                        IsEnabled="{Binding ObjectTree.CanSelectRows, FallbackValue=False}" />
               <MenuItem Header="_Copy qualified name"
                         Click="OnCopyQualifiedName"
                         IsEnabled="{Binding ObjectTree.HasSelectedObject, FallbackValue=False}" />
@@ -315,7 +319,7 @@
         <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch"
                       Background="#FFE0E0E0" />
 
-        <TabControl Grid.Row="3" x:Name="ResultsArea">
+        <TabControl Grid.Row="3" x:Name="ResultsArea" SelectionChanged="OnBottomTabChanged">
           <TabItem Header="Results">
             <DockPanel>
               <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="4">
@@ -384,6 +388,143 @@
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
+          </TabItem>
+
+          <!--
+            Object detail (PR-2.4). Loads only while this tab is showing (PR-6.4),
+            and every Informix-specific term carries its explanation on the tooltip
+            (NFR-11) — U2 will not know what a dbspace is.
+          -->
+          <TabItem x:Name="ObjectDetailTab" Header="Object">
+            <Grid DataContext="{Binding ObjectTree.Detail}">
+              <TextBlock Text="Select a table or view in the tree to see its detail."
+                         Foreground="#FF5F6368" Margin="10"
+                         Visibility="{Binding HasDetail, Converter={StaticResource BoolToVisibility},
+                                      ConverterParameter=Invert}" />
+
+              <ScrollViewer VerticalScrollBarVisibility="Auto"
+                            Visibility="{Binding HasDetail, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel Margin="10">
+
+                  <TextBlock Text="{Binding Title}" Style="{StaticResource HeadingText}" />
+
+                  <TextBlock Text="{Binding StorageSummary}" Margin="0,6,0,0"
+                             TextWrapping="Wrap" Foreground="#FF3C4043" />
+
+                  <TextBlock Text="{Binding StatisticsSummary}" Margin="0,4,0,10"
+                             TextWrapping="Wrap" Foreground="#FF3C4043"
+                             ToolTip="{x:Static vm:InformixConcepts.Statistics}" />
+
+                  <Expander Header="Columns" IsExpanded="True" Margin="0,0,0,8">
+                    <DataGrid ItemsSource="{Binding Detail.Columns}"
+                              AutoGenerateColumns="False" IsReadOnly="True"
+                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                              MaxHeight="320" FontFamily="Consolas" FontSize="12">
+                      <DataGrid.Columns>
+                        <DataGridTextColumn Header="#" Binding="{Binding Position}" Width="40" />
+                        <DataGridTextColumn Header="Column" Binding="{Binding Name}" Width="200" />
+                        <DataGridTextColumn Header="Type" Binding="{Binding TypeDescription}" Width="200" />
+                        <DataGridCheckBoxColumn Header="Null?" Binding="{Binding IsNullable}" Width="55" />
+                        <DataGridTextColumn Header="Default" Binding="{Binding DefaultValue}" Width="120" />
+                        <!-- PR-8.2: the catalogue's own encoding, on show. -->
+                        <DataGridTextColumn Header="coltype" Binding="{Binding RawColType}" Width="65" />
+                        <DataGridTextColumn Header="collength" Binding="{Binding RawColLength}" Width="75" />
+                      </DataGrid.Columns>
+                    </DataGrid>
+                  </Expander>
+
+                  <Expander Header="Indexes" IsExpanded="True" Margin="0,0,0,8">
+                    <DataGrid ItemsSource="{Binding Detail.Indexes}"
+                              AutoGenerateColumns="False" IsReadOnly="True"
+                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                              MaxHeight="200" FontFamily="Consolas" FontSize="12">
+                      <DataGrid.Columns>
+                        <DataGridTextColumn Header="Index" Binding="{Binding Name}" Width="200" />
+                        <DataGridCheckBoxColumn Header="Unique" Binding="{Binding IsUnique}" Width="60" />
+                        <DataGridCheckBoxColumn Header="Clustered" Binding="{Binding IsClustered}" Width="70" />
+                        <DataGridCheckBoxColumn Header="Constraint" Binding="{Binding BacksConstraint}" Width="75" />
+                        <DataGridTextColumn Header="Key"
+                                            Binding="{Binding Columns, Converter={StaticResource JoinList}}"
+                                            Width="*" />
+                      </DataGrid.Columns>
+                    </DataGrid>
+                  </Expander>
+
+                  <Expander Header="Constraints" IsExpanded="True" Margin="0,0,0,8">
+                    <DataGrid ItemsSource="{Binding Detail.Constraints}"
+                              AutoGenerateColumns="False" IsReadOnly="True"
+                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                              MaxHeight="200" FontFamily="Consolas" FontSize="12">
+                      <DataGrid.Columns>
+                        <DataGridTextColumn Header="Constraint" Binding="{Binding Name}" Width="200" />
+                        <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="90" />
+                        <DataGridTextColumn Header="Columns"
+                                            Binding="{Binding Columns, Converter={StaticResource JoinList}}"
+                                            Width="200" />
+                        <DataGridTextColumn Header="References" Binding="{Binding ReferencedTable}" Width="150" />
+                        <DataGridTextColumn Header="Check" Binding="{Binding CheckExpression}" Width="*" />
+                      </DataGrid.Columns>
+                    </DataGrid>
+                  </Expander>
+
+                  <Expander Header="Triggers" Margin="0,0,0,8">
+                    <DataGrid ItemsSource="{Binding Detail.Triggers}"
+                              AutoGenerateColumns="False" IsReadOnly="True"
+                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                              MaxHeight="150" FontFamily="Consolas" FontSize="12">
+                      <DataGrid.Columns>
+                        <DataGridTextColumn Header="Trigger" Binding="{Binding Name}" Width="220" />
+                        <DataGridTextColumn Header="Owner" Binding="{Binding Owner}" Width="120" />
+                        <DataGridTextColumn Header="Event" Binding="{Binding Event}" Width="*" />
+                      </DataGrid.Columns>
+                    </DataGrid>
+                  </Expander>
+
+                  <Expander Header="Storage and fragmentation" Margin="0,0,0,8"
+                            ToolTip="{x:Static vm:InformixConcepts.Fragmentation}">
+                    <DataGrid ItemsSource="{Binding Detail.Fragments}"
+                              AutoGenerateColumns="False" IsReadOnly="True"
+                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                              MaxHeight="180" FontFamily="Consolas" FontSize="12">
+                      <DataGrid.Columns>
+                        <DataGridTextColumn Header="Strategy" Binding="{Binding Strategy}" Width="110" />
+                        <DataGridTextColumn Header="Dbspace" Binding="{Binding DbSpace}" Width="150" />
+                        <DataGridTextColumn Header="Expression" Binding="{Binding Expression}" Width="*" />
+                      </DataGrid.Columns>
+                    </DataGrid>
+                  </Expander>
+
+                  <Expander Header="What these Informix terms mean" Margin="0,0,0,8">
+                    <StackPanel Margin="6">
+                      <TextBlock Text="Dbspace" FontWeight="SemiBold" Margin="0,4,0,0" />
+                      <TextBlock Text="{x:Static vm:InformixConcepts.DbSpace}" TextWrapping="Wrap" />
+                      <TextBlock Text="Extent" FontWeight="SemiBold" Margin="0,8,0,0" />
+                      <TextBlock Text="{x:Static vm:InformixConcepts.Extent}" TextWrapping="Wrap" />
+                      <TextBlock Text="Fragmentation" FontWeight="SemiBold" Margin="0,8,0,0" />
+                      <TextBlock Text="{x:Static vm:InformixConcepts.Fragmentation}" TextWrapping="Wrap" />
+                      <TextBlock Text="Lock mode" FontWeight="SemiBold" Margin="0,8,0,0" />
+                      <TextBlock Text="{x:Static vm:InformixConcepts.LockMode}" TextWrapping="Wrap" />
+                      <TextBlock Text="Statistics" FontWeight="SemiBold" Margin="0,8,0,0" />
+                      <TextBlock Text="{x:Static vm:InformixConcepts.Statistics}" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Expander>
+
+                  <!-- PR-8.2 / PR-8.3: exactly what IMS asked the server. -->
+                  <Expander Header="Catalogue queries behind this pane" Margin="0,0,0,8">
+                    <TextBox Text="{Binding QueriesUsed, Mode=OneWay}"
+                             IsReadOnly="True" AcceptsReturn="True"
+                             FontFamily="Consolas" FontSize="11"
+                             MaxHeight="240"
+                             VerticalScrollBarVisibility="Auto"
+                             HorizontalScrollBarVisibility="Auto" />
+                  </Expander>
+
+                </StackPanel>
+              </ScrollViewer>
+
+              <TextBlock Text="{Binding Error}" Foreground="#FFB3261E" Margin="10"
+                         TextWrapping="Wrap" VerticalAlignment="Bottom" />
+            </Grid>
           </TabItem>
         </TabControl>
       </Grid>

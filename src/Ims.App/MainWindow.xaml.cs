@@ -661,6 +661,44 @@ public partial class MainWindow : Window
         BindEditorToSelectedTab();
     }
 
+    /// <summary>Switches to the detail pane and loads the selection (PR-2.4).</summary>
+    private async void OnShowObjectDetail(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.ObjectTree is not { } tree)
+        {
+            return;
+        }
+
+        ResultsArea.SelectedItem = ObjectDetailTab;
+        tree.IsDetailVisible = true;
+
+        await tree.RefreshDetailAsync(CancellationToken.None);
+    }
+
+    /// <summary>
+    /// Tracks whether the detail pane is showing, so it only queries when visible.
+    /// </summary>
+    /// <remarks>
+    /// PR-6.4: metadata queries must stay negligible on a production instance.
+    /// Arrowing through 500 tables should not issue 500 rounds of six catalogue
+    /// queries because a hidden pane was keeping up with the selection.
+    /// </remarks>
+    private async void OnBottomTabChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!ReferenceEquals(e.OriginalSource, ResultsArea) || _viewModel.ObjectTree is not { } tree)
+        {
+            return;
+        }
+
+        bool visible = ReferenceEquals(ResultsArea.SelectedItem, ObjectDetailTab);
+        tree.IsDetailVisible = visible;
+
+        if (visible)
+        {
+            await tree.RefreshDetailAsync(CancellationToken.None);
+        }
+    }
+
     private async void OnRefreshTreeNode(object sender, RoutedEventArgs e)
     {
         if (_viewModel.ObjectTree is { } tree)

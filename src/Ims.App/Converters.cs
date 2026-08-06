@@ -52,6 +52,16 @@ public sealed class BooleanToVisibilityConverter : IValueConverter
         throw new NotSupportedException();
 }
 
+/// <summary>Joins a list of strings for display in a single grid cell.</summary>
+public sealed class JoinListConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is IEnumerable<string> items ? string.Join(", ", items) : string.Empty;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 /// <summary>True when the bound value is not null. Enables controls that need one.</summary>
 public sealed class NotNullToBooleanConverter : IValueConverter
 {

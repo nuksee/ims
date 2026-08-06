@@ -33,9 +33,30 @@ public sealed partial class ObjectTreeViewModel : ObservableObject, IAsyncDispos
         _catalog = catalog;
 
         Roots = BuildFolders();
+        Detail = new TableDetailViewModel(catalog);
     }
 
     public ConnectionDescriptor Descriptor { get; }
+
+    /// <summary>The detail pane for whatever is selected (PR-2.4).</summary>
+    public TableDetailViewModel Detail { get; }
+
+    /// <summary>
+    /// True while the detail pane is on screen.
+    /// </summary>
+    /// <remarks>
+    /// Detail is only fetched when this is set. PR-6.4 keeps metadata queries
+    /// negligible on a production instance, and arrowing through 500 tables should
+    /// not issue 500 rounds of six catalogue queries because a hidden pane was
+    /// keeping up.
+    /// </remarks>
+    public bool IsDetailVisible { get; set; }
+
+    /// <summary>Loads detail for the current selection, if the pane is showing.</summary>
+    public Task RefreshDetailAsync(CancellationToken cancellationToken) =>
+        IsDetailVisible
+            ? Detail.ShowAsync(SelectedObject, cancellationToken)
+            : Task.CompletedTask;
 
     /// <summary>
     /// The folders, one per object kind (PR-2.1).
@@ -141,6 +162,8 @@ public sealed partial class ObjectTreeViewModel : ObservableObject, IAsyncDispos
         OnPropertyChanged(nameof(SelectedObject));
         OnPropertyChanged(nameof(CanSelectRows));
         OnPropertyChanged(nameof(HasSelectedObject));
+
+        _ = RefreshDetailAsync(CancellationToken.None);
     }
 
     partial void OnIncludeSystemObjectsChanged(bool value) =>
