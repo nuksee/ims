@@ -78,13 +78,26 @@ to be equally unmapped.
 >   `CommandTimeout = 0`. If `Cancel()` does not land, nothing stops it. **Do not run this
 >   against the production server**; it needs an instance of its own (RSK-5, PR-6.4).
 
-- [ ] Cancellation: does `OdbcCommand.Cancel()` leave the session usable? — PR-3.5. **Twice
-  inconclusive, 2026-08-06.** Both attempts finished before the two-second cancel, so `Cancel()`
-  was never exercised. Widening the join and raising the cap did not help, and the reason is
-  the probe's own shape: `COUNT(*)` over `FIRST n` lets the optimiser stop at *n* rows, so the
-  cap bounded the work rather than the result. Now `ORDER BY` over a three-way join, which
-  cannot be short-circuited — no row of a sorted result exists until every input row is read —
-  with `FIRST 200` and the 30s timeout still bounding it. Retry with `--include-light-load`
+- [~] Cancellation — PR-3.5. **Half answered, and the half that failed is the important one.**
+  Measured 2026-08-06 against 14.10 once the statement was finally slow enough (`ORDER BY` over
+  a three-way join; the two earlier attempts used `COUNT(*)` over `FIRST n`, which the optimiser
+  short-circuits, so they proved nothing):
+
+  | | |
+  |---|---|
+  | Session survives | ✅ Yes — usable immediately afterwards |
+  | `OdbcCommand.Cancel()` stops the statement | ❌ **No.** Called at 2s; the statement ran to the 30s `CommandTimeout` and ended with `-11094 Timeout expired`, 31s after the cancel |
+
+  So the token does **not** reach the server, and PR-3.5's "cancel reaches the server via
+  `OdbcCommand.Cancel`, not just the await" is **not met** — §1b marks that item done on the
+  strength of the code path existing, which this disproves. A user pressing Alt+Break would see
+  the UI return while the statement kept running.
+
+  Not yet diagnosed, and worth ruling out before redesigning: whether this is specific to a
+  sort (the server may not check for interrupts while sorting), and whether `SQL_ATTR_ASYNC` or
+  the driver's own interrupt setting changes it. The fallback — a second connection issuing an
+  administrative cancel — costs the extra session PR-6.4 asks IMS not to add, so it should not
+  be built until the cheaper explanations are eliminated
 - [x] Streaming: does the driver stream or buffer? — PR-4.2, RSK-6. **It streams.** 20,000 rows
   in 1090 ms, first row after 69 ms, managed heap flat. Bounded run, so this is the driver's
   behaviour at that size and says nothing about NFR-2's million rows
@@ -126,7 +139,11 @@ to be equally unmapped.
 - [x] **M** Context-aware completion — PR-3.2. Built in Slice 2 as planned, over the shared `CatalogCache`. See "How completion decides what to offer" below
 - [x] **M** Execute whole script or selection only — PR-3.3
 - [x] **M** Multi-statement execution, each outcome in sequence, failing statement identified by index and offset — PR-3.4
-- [x] **M** Cancel: the token reaches the server via `OdbcCommand.Cancel`, not just the await — PR-3.5, RSK-6 *(unverified against a server)*
+- [~] **M** Cancel — PR-3.5, RSK-6. The code calls `OdbcCommand.Cancel` rather than only
+  abandoning the await, but **measured against 14.10 on 2026-08-06 the cancel does not reach
+  the server**: the statement ran on to its timeout, 31s after Cancel() was called. The session
+  survives. Until this is resolved the gesture is misleading — the UI returns while the
+  statement continues. See Slice 0's "still blocked on a live server" for what to rule out first
 - [x] **M** Error surface: SQLCODE + ISAM + explanation, ISAM winning where both exist — PR-3.6
 - [x] **M** Transaction state in the status bar at all times; explicit commit/rollback — PR-3.7
 - [x] **M** Warn before `UPDATE`/`DELETE` with no `WHERE`; literals and comments stripped first — PR-3.8, RSK-7
@@ -199,7 +216,10 @@ Still open, because each needs a live server:
 - [ ] The full §5 acceptance script against **14.10** — RSK-9 *(12.10 descoped, DEC-5)*
 - [ ] A 1,000,000+ row result set stays responsive — NFR-2 *(DEP-3 also unmet)*
 - [ ] 200 ms input acknowledgement under real load — NFR-1, PR-8.5
-- [ ] Cancel a long-running statement and keep the session — PR-3.5
+- [~] Cancel a long-running statement and keep the session — PR-3.5. **The session is kept; the
+  statement is not cancelled.** Measured 2026-08-06 — see §1b. This is a release blocker for a
+  pilot, since RSK-1's whole premise is not needing `dbaccess`, and an uncancellable statement
+  is a reason to reach for it
 - [ ] Kill the process mid-edit against a live session and confirm recovery — PR-3.9 *(the autosave itself is tested)*
 
 ---

@@ -635,8 +635,11 @@ public static class Probes
             await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken).ConfigureAwait(false);
             command.Cancel();
 
+            const int cancelAfterSeconds = 2;
+
             string outcome;
             bool cancelLanded;
+            bool timedOut = false;
             try
             {
                 await execute.ConfigureAwait(false);
@@ -645,8 +648,26 @@ public static class Probes
             }
             catch (OdbcException ex)
             {
-                outcome = $"cancelled after {stopwatch.ElapsedMilliseconds} ms ({Describe(ex)})";
-                cancelLanded = true;
+                // An exception is not proof the cancel worked. The CommandTimeout
+                // backstop also arrives as an OdbcException, and reading that as a
+                // successful cancellation would report the exact failure this probe
+                // exists to detect as a pass. HYT00 is the timeout SQLSTATE; the
+                // elapsed time is the corroborating signal, since a cancel that
+                // landed ends the statement near cancelAfterSeconds, not at the
+                // timeout.
+                timedOut =
+                    ex.Errors.Cast<OdbcError>().Any(e =>
+                        string.Equals(e.SQLState, "HYT00", StringComparison.OrdinalIgnoreCase))
+                    || stopwatch.Elapsed.TotalSeconds >= command.CommandTimeout - 1;
+
+                outcome = timedOut
+                    ? $"NOT cancelled: the statement ran until the {command.CommandTimeout}s "
+                      + $"CommandTimeout ended it, {stopwatch.ElapsedMilliseconds} ms after it "
+                      + $"started and {stopwatch.Elapsed.TotalSeconds - cancelAfterSeconds:F0}s "
+                      + $"after Cancel() was called ({Describe(ex)})"
+                    : $"cancelled after {stopwatch.ElapsedMilliseconds} ms ({Describe(ex)})";
+
+                cancelLanded = !timedOut;
             }
             catch (OperationCanceledException)
             {
@@ -681,6 +702,23 @@ public static class Probes
                     "PR-3.5",
                     $"{outcome}; {survivalDetail}. Slice 1 will need a different cancellation "
                     + "strategy — probably a second connection issuing an administrative cancel.",
+                    sql);
+            }
+
+            // Cancel() was called and the statement kept running to the timeout. That
+            // is PR-3.5 unmet, not an inconclusive run: the requirement is that the
+            // token reaches the server, and here it demonstrably did not.
+            if (timedOut)
+            {
+                return ProbeResult.Fail(
+                    "Cancellation",
+                    "PR-3.5",
+                    $"{outcome}; {survivalDetail}. Cancel() did not reach the server, so "
+                    + "PR-3.5 is not met by OdbcCommand.Cancel() alone on this instance. "
+                    + "Slice 1's cancel gesture would leave the statement running. The "
+                    + "fallback is a second connection issuing an administrative cancel "
+                    + "(onmode -z / SQL ADMIN), which costs the extra session PR-6.4 asks "
+                    + "IMS not to add — so confirm this before building it.",
                     sql);
             }
 
