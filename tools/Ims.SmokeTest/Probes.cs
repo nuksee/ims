@@ -87,6 +87,12 @@ public static class Probes
             // The scanning statement is slow without a sort: a cross join whose filter
             // matches nothing, so the server reads every row and returns none. If the
             // cancel lands here but not on the sort, the limitation is the sort.
+            //
+            // The filter has to span every table in the join. A first attempt tested
+            // only `a.tabname`, which the optimiser pushed down to `a` before joining,
+            // reduced to no rows, and answered in under two seconds — the cross product
+            // was never built. Comparing tabids across all three cannot be decided
+            // until the rows are actually combined, so the work has to happen.
             bool boundedCancel = !options.IncludeLoadProbes;
 
             results.Add(await SafelyAsync("Cancellation (sort)", "PR-3.5",
@@ -106,8 +112,8 @@ public static class Probes
                     options,
                     "Cancellation (scan)",
                     boundedCancel
-                        ? "SELECT COUNT(*) FROM systables a, systables b, systables c WHERE a.tabname = '~no~such~table~'"
-                        : "SELECT COUNT(*) FROM systables a, systables b, systables c, systables d WHERE a.tabname = '~no~such~table~'",
+                        ? "SELECT COUNT(*) FROM systables a, systables b, systables c WHERE a.tabid + b.tabid + c.tabid < 0"
+                        : "SELECT COUNT(*) FROM systables a, systables b, systables c, systables d WHERE a.tabid + b.tabid + c.tabid + d.tabid < 0",
                     boundedCancel ? 30 : 0,
                     cancellationToken)).ConfigureAwait(false));
 
@@ -764,8 +770,11 @@ public static class Probes
                     "PR-3.5",
                     $"{outcome}, so Cancel() was never actually tested; {survivalDetail}."
                     + (timeoutSeconds > 0
-                        ? " The bounded statement was too quick on this instance. It needs to be"
-                          + " made slower before this probe can say anything."
+                        ? " The bounded statement was too quick on this instance, so it needs to"
+                          + " be made slower before this probe can say anything. Check first that"
+                          + " the optimiser is not skipping the work: a filter it can push down"
+                          + " below the join answers immediately without building the cross"
+                          + " product, which looks the same from here as a fast server."
                         : string.Empty),
                     sql);
             }

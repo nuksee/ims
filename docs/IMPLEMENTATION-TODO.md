@@ -93,9 +93,15 @@ to be equally unmapped.
   strength of the code path existing, which this disproves. A user pressing Alt+Break would see
   the UI return while the statement kept running.
 
+  Reproduced a second time on 2026-08-06: 32,724 ms, `-11094`, session fine. Not a one-off.
+
   **The sort may be the cause rather than the driver**, and that is now testable: the smoke
   test runs the cancellation probe twice, against one statement made slow by `ORDER BY` and one
-  made slow by scanning a cross join whose filter matches nothing. Read the pair:
+  made slow by scanning a cross join whose filter matches nothing. The scan half has not
+  produced a usable measurement yet — the first attempt filtered on `a.tabname`, which the
+  optimiser pushed below the join, so it answered in under two seconds without building the
+  cross product. The filter now spans every joined table (`a.tabid + b.tabid + c.tabid < 0`),
+  which cannot be decided before the rows are combined. Read the pair once both report:
 
   | Sort | Scan | Means |
   |---|---|---|
