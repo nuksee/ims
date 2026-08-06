@@ -607,10 +607,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (schemaObject.Kind is not (SchemaObjectKind.Table or SchemaObjectKind.View
-            or SchemaObjectKind.Synonym or SchemaObjectKind.PrivateSynonym))
+        // The menu item is disabled for anything else; this is the backstop.
+        if (_viewModel.ObjectTree?.CanSelectRows != true)
         {
-            _viewModel.StatusText = "Only a table, view or synonym can be selected from.";
             return;
         }
 

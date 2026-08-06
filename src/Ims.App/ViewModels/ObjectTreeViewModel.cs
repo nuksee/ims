@@ -53,6 +53,17 @@ public sealed partial class ObjectTreeViewModel : ObservableObject, IAsyncDispos
     /// <summary>The selected object, when the selection is one.</summary>
     public SchemaObject? SelectedObject => (SelectedNode as SchemaObjectNodeViewModel)?.Object;
 
+    /// <summary>True when the selection is something you can actually select rows from.</summary>
+    /// <remarks>
+    /// Tables and views only. A synonym points at one, but resolving it is a
+    /// separate step and offering the action for something IMS cannot complete
+    /// would be worse than not offering it.
+    /// </remarks>
+    public bool CanSelectRows =>
+        SelectedObject?.Kind is SchemaObjectKind.Table or SchemaObjectKind.View;
+
+    public bool HasSelectedObject => SelectedObject is not null;
+
     private ObservableCollection<CatalogNodeViewModel> BuildFolders() =>
     [
         Folder("Tables", SchemaObjectKind.Table),
@@ -62,7 +73,12 @@ public sealed partial class ObjectTreeViewModel : ObservableObject, IAsyncDispos
         Folder("Procedures", SchemaObjectKind.Procedure),
         Folder("Functions", SchemaObjectKind.Function),
         Folder("Indexes", SchemaObjectKind.Index),
-        Folder("Types", SchemaObjectKind.UserDefinedType),
+
+        // User-defined types are absent on purpose. The sysxtdtypes query was the
+        // one listing query that failed against 14.10, and the owner descoped it
+        // rather than spend time on it now. PR-2.1 names UDTs, so this leaves that
+        // requirement partly unmet — recorded in docs/IMPLEMENTATION-TODO.md rather
+        // than quietly dropped.
     ];
 
     private ObjectFolderNodeViewModel Folder(string name, SchemaObjectKind kind) =>
@@ -123,6 +139,8 @@ public sealed partial class ObjectTreeViewModel : ObservableObject, IAsyncDispos
     {
         OnPropertyChanged(nameof(SelectedQuery));
         OnPropertyChanged(nameof(SelectedObject));
+        OnPropertyChanged(nameof(CanSelectRows));
+        OnPropertyChanged(nameof(HasSelectedObject));
     }
 
     partial void OnIncludeSystemObjectsChanged(bool value) =>

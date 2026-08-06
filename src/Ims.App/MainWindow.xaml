@@ -221,9 +221,19 @@
           </TreeView.ItemContainerStyle>
 
           <TreeView.ContextMenu>
-            <ContextMenu>
-              <MenuItem Header="_SELECT first 100 rows" Click="OnSelectFirstRows" />
-              <MenuItem Header="_Copy qualified name" Click="OnCopyQualifiedName" />
+            <!--
+              Actions that do not apply to the selection are disabled rather than
+              offered and then refused. Being told "no" after clicking teaches
+              nothing; a greyed item shows what the selection is.
+            -->
+            <ContextMenu DataContext="{Binding PlacementTarget.DataContext,
+                                       RelativeSource={RelativeSource Self}}">
+              <MenuItem Header="_SELECT first 100 rows"
+                        Click="OnSelectFirstRows"
+                        IsEnabled="{Binding ObjectTree.CanSelectRows, FallbackValue=False}" />
+              <MenuItem Header="_Copy qualified name"
+                        Click="OnCopyQualifiedName"
+                        IsEnabled="{Binding ObjectTree.HasSelectedObject, FallbackValue=False}" />
               <Separator />
               <MenuItem Header="Show the catalogue _query…" Click="OnShowCatalogQuery" />
               <MenuItem Header="_Refresh" Click="OnRefreshTreeNode" />

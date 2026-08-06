@@ -207,14 +207,16 @@ public sealed class SchemaObjectNodeViewModel : CatalogNodeViewModel
     {
         get
         {
-            // The row count is only as fresh as the statistics, and PR-2.5 is about
-            // not letting people forget that. The detail pane says so properly; here
-            // the tilde is the reminder that it is an estimate.
-            string owner = Object.Owner;
-
-            return Object.EstimatedRows is { } rows
-                ? $"{owner} — ~{rows:N0} rows"
-                : owner;
+            // A row count only means something for a table. systables carries an
+            // nrows for views, synonyms and sequences too, but the number is an
+            // artefact there rather than an answer — showing it invites people to
+            // read meaning into it.
+            //
+            // Even for a table it is only as fresh as the statistics, which is what
+            // the tilde is for; PR-2.5 makes the detail pane say so properly.
+            return Object.Kind == SchemaObjectKind.Table && Object.EstimatedRows is { } rows
+                ? $"{Object.Owner} — ~{rows:N0} rows"
+                : Object.Owner;
         }
     }
 

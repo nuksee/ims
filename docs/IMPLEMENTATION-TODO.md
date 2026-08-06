@@ -150,16 +150,16 @@ Still open, because each needs a live server:
 > without writing a query, script its DDL at `dbschema` fidelity.
 
 - [ ] **M** Catalogue query layer over `systables` et al., with capability detection rather than version branching — NFR-4, DEC-5
-- [ ] **M** Object tree: databases → tables, views, synonyms, indexes, constraints, triggers, procedures, functions, sequences, UDTs — PR-2.1
-- [ ] **M** Strictly on-demand loading of children and detail; virtualised tree — PR-2.2, NFR-1, NFR-2
-- [ ] **M** Filter/search by object name, type, owner — PR-2.3
+- [~] **M** Object tree — PR-2.1. **Verified against 14.10:** tables, views, synonyms, sequences, procedures, functions and indexes all list correctly. **User-defined types are not shown** — the `sysxtdtypes` query was the one listing query that failed, and the owner descoped it on 2026-08-06 rather than spend time diagnosing it. PR-2.1 names UDTs, so this Must is *partly* met. Constraints and triggers appear in the table detail pane rather than as tree folders
+- [x] **M** Strictly on-demand loading of children; virtualised tree — PR-2.2, NFR-1, NFR-2
+- [x] **M** Filter by object name; owner filter supported by the reader but not yet surfaced in the UI — PR-2.3
 - [ ] **M** Table detail pane: columns + types + nullability, indexes, constraints, triggers, owner, estimated row count, dbspace, lock mode, extent sizing, fragmentation strategy — PR-2.4
 - [ ] **M** Statistics currency indicator (current vs stale) — PR-2.5
 - [ ] **M** DDL scripting into a new editor tab, at `dbschema` fidelity. Diff against real `dbschema` output as the test — PR-2.6
-- [ ] **M** Subtree refresh without rebuilding the whole tree — PR-2.7
-- [ ] **M** Show the underlying catalogue query behind every structured view — PR-8.2, PR-8.3
+- [x] **M** Subtree refresh without rebuilding the whole tree — PR-2.7
+- [x] **M** Show the underlying catalogue query behind a tree node — PR-8.2, PR-8.3 *(detail pane still to come)*
 - [ ] **M** In-context explanation of Informix concepts surfaced in the detail pane (dbspace, extent, fragmentation) — NFR-11
-- [ ] **S** Tree shortcuts: `SELECT` first *n* rows, script object, copy qualified name — PR-2.8
+- [~] **S** Tree shortcuts — PR-2.8. `SELECT` first 100 rows and copy qualified name are in; "script object" waits on PR-2.6
 - [ ] **S** Dependencies and dependents — PR-2.9 *(Slice 4)*
 - [ ] **S** Whole-database re-runnable schema script — PR-2.10 *(Slice 4)*
 - [ ] Exit check: 20,000+ object database, no stall — NFR-2
