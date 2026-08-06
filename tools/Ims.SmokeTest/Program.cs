@@ -202,7 +202,8 @@ internal static class Program
             USAGE
               Ims.SmokeTest --server <name> --host <host> --service <port>
                             [--database <db>] [--user <user>] [--protocol <proto>]
-                            [--timeout <seconds>] [--include-load]
+                            [--timeout <seconds>]
+                            [--include-light-load | --include-load]
 
             OPTIONS
               --server         Informix server name, as in sqlhosts.       (required)
@@ -214,9 +215,19 @@ internal static class Program
               --password       Password, non-interactively. Discouraged — it is
                                visible in the process list. Prefer the prompt.
               --timeout        Connect timeout in seconds. Default: 15.
-              --include-load   Also run the probes that put real load on the server
-                               (streaming and cancellation). Off by default because
-                               RSK-5 and PR-6.4 say not to do that casually.
+
+              --include-light-load
+                               Run streaming and cancellation in BOUNDED form. Every
+                               statement is capped server-side with FIRST and carries
+                               a 30s CommandTimeout, so the work is known before it is
+                               sent. Safe enough for a test database that shares a
+                               server with production. Start here.
+
+              --include-load   Run them UNBOUNDED: a four-way cross join with no
+                               timeout. Nothing stops it if Cancel() does not land, so
+                               use it only on an instance of its own (RSK-5, PR-6.4).
+                               Implies the bounded tier.
+
               -h, --help       Show this text and exit. Touches nothing.
 
             PROBES
@@ -228,10 +239,11 @@ internal static class Program
                                                   arrives as: DATETIME with its
                                                   qualifier, INTERVAL, MONEY, DECIMAL.
               Streaming           PR-4.2, RSK-6   Does the driver stream, or buffer
-                                                  the whole result set?   [--include-load]
+                                                  the whole result set?
+                                                                    [either load flag]
               Cancellation        PR-3.5          Can a running statement be cancelled
                                                   without losing the session?
-                                                                          [--include-load]
+                                                                    [either load flag]
               sysmaster readable  Q-1, AS-3       THE Slice 3 gate. Run this as an
                                                   ordinary developer, not as informix.
 

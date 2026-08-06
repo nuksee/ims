@@ -24,15 +24,42 @@ public sealed class SmokeTestOptions
     public string? Password { get; set; }
 
     /// <summary>
-    /// Opt-in for the probes that put real load on the server.
+    /// Opt-in for bounded versions of the streaming and cancellation probes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// DEP-2 asks for an instance of its own, and the estate does not have one: the
+    /// test database shares a server with production. So the choice is not "load
+    /// probes or no answers" but "bounded load or no answers", and these are the
+    /// bounded half.
+    /// </para>
+    /// <para>
+    /// Every statement is capped <em>server-side</em> with <c>FIRST n</c> and carries
+    /// a <c>CommandTimeout</c>, so the work is known before it is sent rather than
+    /// stopped once it is running. That is the difference that matters when a
+    /// runaway would land on the same instance as production (RSK-5, PR-6.4).
+    /// </para>
+    /// </remarks>
+    public bool IncludeLightLoadProbes { get; set; }
+
+    /// <summary>
+    /// Opt-in for the unbounded probes.
     /// </summary>
     /// <remarks>
     /// RSK-5 and PR-6.4. The cancellation probe needs a statement slow enough to
-    /// cancel, which means a deliberately expensive query. That is fine on the
-    /// non-production instance DEP-2 asks for and not fine anywhere else, so it
-    /// does not run unless asked for.
+    /// cancel, and the unbounded form gets there with a four-way cross join and no
+    /// timeout — if the cancel does not land, nothing stops it. That is fine on a
+    /// server of its own and not fine on one shared with production, so it stays
+    /// behind its own flag and <see cref="IncludeLightLoadProbes"/> is the option to
+    /// reach for first.
     /// </remarks>
     public bool IncludeLoadProbes { get; set; }
+
+    /// <summary>
+    /// True when either load tier was asked for. The bounded tier is implied by the
+    /// unbounded one, so <c>--include-load</c> alone still runs everything.
+    /// </summary>
+    public bool AnyLoadProbes => IncludeLightLoadProbes || IncludeLoadProbes;
 
     public int TimeoutSeconds { get; set; } = 15;
 
@@ -73,6 +100,10 @@ public sealed class SmokeTestOptions
                 case "-h" or "--help" or "/?":
                     options.ShowHelp = true;
                     return options;
+
+                case "--include-light-load":
+                    options.IncludeLightLoadProbes = true;
+                    continue;
 
                 case "--include-load":
                     options.IncludeLoadProbes = true;

@@ -471,20 +471,29 @@ public static class Probes
         SmokeTestOptions options,
         CancellationToken cancellationToken)
     {
-        if (!options.IncludeLoadProbes)
+        if (!options.AnyLoadProbes)
         {
             return ProbeResult.Skip(
                 "Streaming",
                 "PR-4.2 / RSK-6",
-                "Needs --include-load: it reads a large result set (RSK-5, PR-6.4).");
+                "Needs --include-light-load (bounded) or --include-load (unbounded).");
         }
 
-        const string sql = "SELECT a.tabname, b.tabname FROM systables a, systables b";
+        // Stream-vs-buffer shows up in the shape of the timings, not in the size of
+        // the result, so a bounded read answers it just as well. FIRST caps the work
+        // on the server rather than trusting the client to stop reading — the only
+        // form that is safe on an instance shared with production (RSK-5, PR-6.4).
+        bool bounded = !options.IncludeLoadProbes;
+        const int boundedRows = 20_000;
+
+        string sql = bounded
+            ? $"SELECT FIRST {boundedRows} a.tabname, b.tabname FROM systables a, systables b"
+            : "SELECT a.tabname, b.tabname FROM systables a, systables b";
 
         try
         {
             using var command = new OdbcCommand(sql, connection);
-            command.CommandTimeout = 120;
+            command.CommandTimeout = bounded ? 30 : 120;
 
             long before = GC.GetTotalMemory(forceFullCollection: true);
             var stopwatch = Stopwatch.StartNew();
@@ -500,7 +509,7 @@ public static class Probes
             {
                 rows++;
 
-                if (rows >= 200_000)
+                if (rows >= (bounded ? boundedRows : 200_000))
                 {
                     break;
                 }
@@ -515,14 +524,22 @@ public static class Probes
             string detail =
                 $"{rows} rows in {stopwatch.ElapsedMilliseconds} ms, "
                 + $"first row after {firstRowMs} ms, "
-                + $"managed heap {(after - before) / 1024 / 1024} MB.";
+                + $"managed heap {(after - before) / 1024 / 1024} MB."
+                + (bounded
+                    ? $" Bounded run: FIRST {boundedRows}, so this shows the driver's behaviour "
+                      + "at that size and says nothing about NFR-2's million rows."
+                    : string.Empty);
 
             return firstRowMs < stopwatch.ElapsedMilliseconds / 2
                 ? ProbeResult.Pass("Streaming", "PR-4.2 / RSK-6", "Appears to stream. " + detail, sql)
                 : ProbeResult.Inconclusive(
                     "Streaming",
                     "PR-4.2 / RSK-6",
-                    "Time-to-first-row is close to total time, which suggests buffering. " + detail,
+                    "Time-to-first-row is close to total time, which suggests buffering. " + detail
+                    + (bounded
+                        ? " At this size the whole read may simply be too fast to separate the two;"
+                          + " treat it as unproven rather than as evidence of buffering."
+                        : string.Empty),
                     sql);
         }
         catch (OdbcException ex)
@@ -540,20 +557,32 @@ public static class Probes
         SmokeTestOptions options,
         CancellationToken cancellationToken)
     {
-        if (!options.IncludeLoadProbes)
+        if (!options.AnyLoadProbes)
         {
             return ProbeResult.Skip(
                 "Cancellation",
                 "PR-3.5",
-                "Needs --include-load: it must start a deliberately slow statement (RSK-5).");
+                "Needs --include-light-load (bounded) or --include-load (unbounded).");
         }
 
-        const string sql = "SELECT COUNT(*) FROM systables a, systables b, systables c, systables d";
+        // Two ways to be slow enough to cancel. The unbounded form is a four-way
+        // cross join with no timeout: nothing stops it if the cancel does not land,
+        // which is the whole hazard on a server shared with production.
+        //
+        // The bounded form counts a capped subquery instead. Three tables rather than
+        // four, FIRST caps it server-side, and CommandTimeout is the backstop — so the
+        // worst case if Cancel() does nothing at all is a query that ends by itself in
+        // 30 seconds rather than one someone has to hunt down with onmode -z.
+        bool bounded = !options.IncludeLoadProbes;
+
+        string sql = bounded
+            ? "SELECT COUNT(*) FROM (SELECT FIRST 2000000 a.tabid FROM systables a, systables b, systables c)"
+            : "SELECT COUNT(*) FROM systables a, systables b, systables c, systables d";
 
         try
         {
             using var command = new OdbcCommand(sql, connection);
-            command.CommandTimeout = 0;
+            command.CommandTimeout = bounded ? 30 : 0;
 
             var stopwatch = Stopwatch.StartNew();
             Task execute = command.ExecuteScalarAsync(cancellationToken);
@@ -562,18 +591,22 @@ public static class Probes
             command.Cancel();
 
             string outcome;
+            bool cancelLanded;
             try
             {
                 await execute.ConfigureAwait(false);
                 outcome = "the statement completed before the cancel landed";
+                cancelLanded = false;
             }
             catch (OdbcException ex)
             {
                 outcome = $"cancelled after {stopwatch.ElapsedMilliseconds} ms ({Describe(ex)})";
+                cancelLanded = true;
             }
             catch (OperationCanceledException)
             {
                 outcome = $"cancelled after {stopwatch.ElapsedMilliseconds} ms";
+                cancelLanded = true;
             }
 
             // The half that matters: PR-3.5 says "without terminating the session".
@@ -596,14 +629,33 @@ public static class Probes
                 survivalDetail = "session unusable afterwards: " + Describe(ex);
             }
 
-            return sessionSurvived
-                ? ProbeResult.Pass("Cancellation", "PR-3.5", $"{outcome}; {survivalDetail}.", sql)
-                : ProbeResult.Fail(
+            if (!sessionSurvived)
+            {
+                return ProbeResult.Fail(
                     "Cancellation",
                     "PR-3.5",
                     $"{outcome}; {survivalDetail}. Slice 1 will need a different cancellation "
                     + "strategy — probably a second connection issuing an administrative cancel.",
                     sql);
+            }
+
+            // A statement that finished on its own says nothing about Cancel(): the
+            // session surviving is not evidence when there was nothing to interrupt.
+            // Likelier in the bounded form, whose statement is deliberately smaller.
+            if (!cancelLanded)
+            {
+                return ProbeResult.Inconclusive(
+                    "Cancellation",
+                    "PR-3.5",
+                    $"{outcome}, so Cancel() was never actually tested; {survivalDetail}."
+                    + (bounded
+                        ? " The bounded statement was too quick on this instance. Re-run with a"
+                          + " larger FIRST cap, or use --include-load on a server of its own."
+                        : string.Empty),
+                    sql);
+            }
+
+            return ProbeResult.Pass("Cancellation", "PR-3.5", $"{outcome}; {survivalDetail}.", sql);
         }
         catch (OdbcException ex)
         {

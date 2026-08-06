@@ -64,8 +64,19 @@ to be equally unmapped.
   end"), so NFR-4's capability detection carries that risk alone: nothing may branch on a version
   number, and any catalogue feature absent in 12.10 must degrade rather than fail. 12.10 is untested
   and unsupported — not refused; restoring it is a testing exercise, not a code change
-- [ ] Cancellation: does `OdbcCommand.Cancel()` leave the session usable? — PR-3.5 *(needs `--include-load`, so a non-production instance)*
-- [ ] Streaming: does the driver stream or buffer? — PR-4.2, RSK-6 *(same)*
+> **DEP-2 is only half met, and it shapes how these are run.** The test database `testdb` sits on
+> the *same server as production* — there is no separate instance to be reckless on. So the
+> smoke test now has two load tiers, and on this estate the bounded one is the only one that
+> should ever run:
+>
+> - `--include-light-load` — streaming and cancellation with every statement capped
+>   server-side by `FIRST` and a 30s `CommandTimeout`. The work is bounded *before* it is sent.
+> - `--include-load` — the original unbounded form: a four-way cross join with
+>   `CommandTimeout = 0`. If `Cancel()` does not land, nothing stops it. **Do not run this
+>   against the production server**; it needs an instance of its own (RSK-5, PR-6.4).
+
+- [ ] Cancellation: does `OdbcCommand.Cancel()` leave the session usable? — PR-3.5 *(use `--include-light-load`)*
+- [ ] Streaming: does the driver stream or buffer? — PR-4.2, RSK-6 *(same. A bounded run shows the driver's behaviour at 20,000 rows; it cannot answer NFR-2's million)*
 - [ ] ISAM error reporting, via a lock conflict or constraint violation — PR-3.6
 - [ ] NULL INTERVAL: IMS infers null from `InvalidCastException`; the probe now measures this — PR-4.4
 - [ ] NFR-2 scale, 20,000+ objects and 1,000,000+ rows — DEP-3 unmet

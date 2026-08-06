@@ -291,7 +291,7 @@ SPL debugging with breakpoints; performance baselining and historical comparison
 | ID | Dependency |
 |---|---|
 | DEP-1 | IBM Informix Client SDK and .NET/ODBC provider — installed, but note the DEC-10 non-redistribution constraint |
-| DEP-2 | A non-production **14.10** instance for development and testing. Met — `demo_srv`, 14.10. The 12.10 half of this dependency is withdrawn with DEC-5's descope |
+| DEP-2 | A non-production **14.10** instance for development and testing. **Partly met.** A test *database* exists (`testdb`, 14.10) but shares a *server* with production, so there is nowhere to run an unbounded or destructive test. Probing must be bounded before it is sent — capped by `FIRST` and a command timeout — not merely cancelled once running (RSK-5, PR-6.4). The 12.10 half of this dependency is withdrawn with DEC-5's descope |
 | DEP-3 | A schema of realistic size to test NFR-2 against |
 | DEP-4 | `sysmaster` read access for Slice 3 (AS-3) |
 
