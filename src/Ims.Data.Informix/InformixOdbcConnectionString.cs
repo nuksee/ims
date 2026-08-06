@@ -58,6 +58,14 @@ public static class InformixOdbcConnectionString
         // Measured against the 4.10 driver: no Database => -11060; Database= (empty)
         // => -908, i.e. a real connection attempt. Connecting at instance level
         // rather than to a named database is legitimate, so an empty value is right.
+        //
+        // But "the driver attempts it" is not "the server allows it". Measured against
+        // demo_srv (14.10) on 2026-08-06, an empty Database is refused with
+        // -354 "Incorrect database or cursor name format", and the same connection
+        // succeeds the moment a database is named. So emitting the empty keyword stays
+        // correct — it is what gets past the driver — but a connection with no database
+        // may still fail at the server, and PR-1.7's error surface is what the user
+        // will see. Do not read -354 as a bad host or bad credentials.
         builder["Database"] = descriptor.Database ?? string.Empty;
 
         if (!string.IsNullOrWhiteSpace(descriptor.UserName))

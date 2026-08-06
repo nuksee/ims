@@ -393,60 +393,45 @@ public static class Probes
         OdbcConnection connection,
         CancellationToken cancellationToken)
     {
-        const string sql = """
+        // Two statements, and the split is the point. An INTERVAL column makes every
+        // column at or after it unreadable, so a single select list with INTERVAL in
+        // the middle reports DECIMAL, MONEY and LVARCHAR as "Unknown SQL type - 110"
+        // — which looks like those types failing and is nothing of the kind. The
+        // ordinary types are asked for on their own, ahead of any INTERVAL, so what
+        // comes back is about them. INTERVAL's own behaviour is the Interval access
+        // probe's job; here it only has to come last.
+        const string ordinarySql = """
             SELECT FIRST 1
                 CURRENT YEAR TO FRACTION(3)          AS dt_fraction3,
                 CURRENT YEAR TO SECOND               AS dt_second,
                 TODAY                                AS plain_date,
-                INTERVAL (5 12:30:45) DAY TO SECOND  AS iv_day_second,
-                INTERVAL (2-06) YEAR TO MONTH        AS iv_year_month,
                 12345.67::DECIMAL(10,2)              AS dec_value,
                 12345.67::MONEY(10,2)                AS money_value,
                 'hello'::LVARCHAR                    AS lvarchar_value
             FROM systables
             """;
 
+        const string intervalSql = """
+            SELECT FIRST 1
+                INTERVAL (5 12:30:45) DAY TO SECOND  AS iv_day_second,
+                INTERVAL (2-06) YEAR TO MONTH        AS iv_year_month
+            FROM systables
+            """;
+
+        string sql = ordinarySql + Environment.NewLine + intervalSql;
+
         try
         {
-            using var command = new OdbcCommand(sql, connection);
-            command.CommandTimeout = 30;
-
-            using OdbcDataReader reader = (OdbcDataReader)await command
-                .ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
-
-            if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
-            {
-                return ProbeResult.Inconclusive("Type fidelity", "PR-4.5", "No row returned.", sql);
-            }
-
             var lines = new List<string>();
 
-            for (int i = 0; i < reader.FieldCount; i++)
-            {
-                string name = reader.GetName(i);
+            lines.Add("Types read with no INTERVAL in the select list:");
+            await DescribeColumnsAsync(connection, ordinarySql, lines, cancellationToken)
+                .ConfigureAwait(false);
 
-                // Per column, because a single unreadable one must not cost the
-                // report on all the others. System.Data.Odbc throws from inside its
-                // type map for Informix INTERVAL, before any value handling.
-                try
-                {
-                    string serverType = reader.GetDataTypeName(i);
-
-                    object? raw = await reader.IsDBNullAsync(i, cancellationToken).ConfigureAwait(false)
-                        ? null
-                        : reader.GetValue(i);
-
-                    InformixDbType mapped = InformixTypeMapper.FromServerTypeName(serverType);
-
-                    lines.Add(
-                        $"{name}: server='{serverType}' clr={raw?.GetType().Name ?? "null"} "
-                        + $"mapped={mapped} value='{raw}'");
-                }
-                catch (Exception ex) when (ex is not OperationCanceledException)
-                {
-                    lines.Add($"{name}: UNREADABLE — {ex.GetType().Name}: {ex.Message}");
-                }
-            }
+            lines.Add(string.Empty);
+            lines.Add("INTERVAL, read separately (see the Interval access probe):");
+            await DescribeColumnsAsync(connection, intervalSql, lines, cancellationToken)
+                .ConfigureAwait(false);
 
             return ProbeResult.Inconclusive(
                 "Type fidelity",
@@ -460,6 +445,57 @@ public static class Probes
         {
             return ProbeResult.Fail("Type fidelity", "PR-4.5", Describe(ex), sql);
         }
+    }
+
+    /// <summary>
+    /// Appends one line per column describing how it arrived.
+    /// </summary>
+    private static async Task<List<string>> DescribeColumnsAsync(
+        OdbcConnection connection,
+        string sql,
+        List<string> lines,
+        CancellationToken cancellationToken)
+    {
+        using var command = new OdbcCommand(sql, connection);
+        command.CommandTimeout = 30;
+
+        using OdbcDataReader reader = (OdbcDataReader)await command
+            .ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            lines.Add("No row returned.");
+            return lines;
+        }
+
+        for (int i = 0; i < reader.FieldCount; i++)
+        {
+            string name = reader.GetName(i);
+
+            // Per column, because a single unreadable one must not cost the
+            // report on all the others. System.Data.Odbc throws from inside its
+            // type map for Informix INTERVAL, before any value handling.
+            try
+            {
+                string serverType = reader.GetDataTypeName(i);
+
+                object? raw = await reader.IsDBNullAsync(i, cancellationToken).ConfigureAwait(false)
+                    ? null
+                    : reader.GetValue(i);
+
+                InformixDbType mapped = InformixTypeMapper.FromServerTypeName(serverType);
+
+                lines.Add(
+                    $"{name}: server='{serverType}' clr={raw?.GetType().Name ?? "null"} "
+                    + $"mapped={mapped} value='{raw}'");
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                lines.Add($"{name}: UNREADABLE — {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        return lines;
     }
 
     /// <summary>
@@ -575,8 +611,13 @@ public static class Probes
         // 30 seconds rather than one someone has to hunt down with onmode -z.
         bool bounded = !options.IncludeLoadProbes;
 
+        // Four tables in the bounded form too. Three was not slow enough against a
+        // small systables — the statement finished inside the two seconds before the
+        // cancel, so Cancel() went untested. The safety here is not the join width:
+        // it is FIRST capping the rows the server will produce and CommandTimeout
+        // ending it regardless, both of which still hold.
         string sql = bounded
-            ? "SELECT COUNT(*) FROM (SELECT FIRST 2000000 a.tabid FROM systables a, systables b, systables c)"
+            ? "SELECT COUNT(*) FROM (SELECT FIRST 5000000 a.tabid FROM systables a, systables b, systables c, systables d)"
             : "SELECT COUNT(*) FROM systables a, systables b, systables c, systables d";
 
         try

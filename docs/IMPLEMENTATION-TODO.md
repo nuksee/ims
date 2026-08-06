@@ -75,8 +75,17 @@ to be equally unmapped.
 >   `CommandTimeout = 0`. If `Cancel()` does not land, nothing stops it. **Do not run this
 >   against the production server**; it needs an instance of its own (RSK-5, PR-6.4).
 
-- [ ] Cancellation: does `OdbcCommand.Cancel()` leave the session usable? — PR-3.5 *(use `--include-light-load`)*
-- [ ] Streaming: does the driver stream or buffer? — PR-4.2, RSK-6 *(same. A bounded run shows the driver's behaviour at 20,000 rows; it cannot answer NFR-2's million)*
+- [ ] Cancellation: does `OdbcCommand.Cancel()` leave the session usable? — PR-3.5. **Attempted
+  2026-08-06, inconclusive:** the bounded statement finished before the two-second cancel, so
+  `Cancel()` was never exercised. `systables` on this instance is small enough that a three-way
+  join is not slow. The cap is now a four-way join under `FIRST 5000000` — retry with
+  `--include-light-load`
+- [x] Streaming: does the driver stream or buffer? — PR-4.2, RSK-6. **It streams.** 20,000 rows
+  in 1090 ms, first row after 69 ms, managed heap flat. Bounded run, so this is the driver's
+  behaviour at that size and says nothing about NFR-2's million rows
+- [x] Instance-level connection (empty `Database=`) is **refused** by this server with `-354`,
+  where the recorded 4.10 finding expected a real connection attempt. A database name is
+  required in practice — see the Slice 1 note below
 - [ ] ISAM error reporting, via a lock conflict or constraint violation — PR-3.6
 - [ ] NULL INTERVAL: IMS infers null from `InvalidCastException`; the probe now measures this — PR-4.4
 - [ ] NFR-2 scale, 20,000+ objects and 1,000,000+ rows — DEP-3 unmet
