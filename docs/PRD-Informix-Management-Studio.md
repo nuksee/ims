@@ -18,8 +18,6 @@
 | 0.2 | 2026-08-05 | Rescoped to a minimal v1 |
 | 0.3 | 2026-08-05 | Reframed as a PRD. Solo, part-time context applied: approval ceremony and success metrics removed, personas reduced to real users, delivery restructured into vertical slices with per-slice acceptance criteria. Six open questions closed. |
 
-> **Note on document type.** v0.1–0.2 were written as a BRD. That was the wrong instrument: a BRD exists to secure funding from business stakeholders, and this project has none — it is solo work on sanctioned time. This is a PRD, whose reader is the author some months from now, deciding what to build next and what was already settled. [§3 Decisions](#3-decisions) is retained with rationale for exactly that reason.
-
 ---
 
 ## 1. Overview
