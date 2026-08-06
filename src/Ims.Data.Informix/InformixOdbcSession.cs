@@ -180,11 +180,30 @@ public sealed class InformixOdbcSession : IInformixSession
     /// application.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Whether the CSDK's ODBC driver honours this, and leaves the session usable
     /// afterwards, is exactly what the smoke test's cancellation probe measures. If
     /// it does not, the fallback is a second connection issuing an administrative
     /// cancel — which would be the first thing IMS does that the user did not type,
     /// and so needs weighing against PR-6.2.
+    /// </para>
+    /// <para>
+    /// <strong>Measured 2026-08-06 against 14.10: it does not.</strong> Two
+    /// statements, one slow by sorting and one slow by scanning, both ran on to their
+    /// 30s command timeout roughly 30 seconds after <c>Cancel()</c> was called. The
+    /// session was usable immediately afterwards in both cases, so the second half of
+    /// PR-3.5 holds and only the first half fails. Sorting is not the cause; the call
+    /// simply does not reach the server.
+    /// </para>
+    /// <para>
+    /// So this method currently returns without stopping anything, and the UI's cancel
+    /// gesture is misleading rather than merely ineffective — it returns control while
+    /// the statement runs on. Before adopting the second-connection fallback, try
+    /// <c>SQL_ATTR_ASYNC_ENABLE</c>: System.Data.Odbc executes synchronously, and
+    /// <c>SQLCancel</c> against a synchronous handle is documented to take effect only
+    /// in limited states. That is a spike, not a redesign, and it is the cheaper
+    /// explanation.
+    /// </para>
     /// </remarks>
     public Task CancelAsync(CancellationToken cancellationToken)
     {

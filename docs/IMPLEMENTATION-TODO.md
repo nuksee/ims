@@ -93,26 +93,30 @@ to be equally unmapped.
   strength of the code path existing, which this disproves. A user pressing Alt+Break would see
   the UI return while the statement kept running.
 
-  Reproduced a second time on 2026-08-06: 32,724 ms, `-11094`, session fine. Not a one-off.
+  **The sort was not the cause — it is the driver.** Both workloads were run on 2026-08-06,
+  one made slow by `ORDER BY` and one by scanning a cross join with a filter that cannot be
+  pushed below the join. They failed identically:
 
-  **The sort may be the cause rather than the driver**, and that is now testable: the smoke
-  test runs the cancellation probe twice, against one statement made slow by `ORDER BY` and one
-  made slow by scanning a cross join whose filter matches nothing. The scan half has not
-  produced a usable measurement yet — the first attempt filtered on `a.tabname`, which the
-  optimiser pushed below the join, so it answered in under two seconds without building the
-  cross product. The filter now spans every joined table (`a.tabid + b.tabid + c.tabid < 0`),
-  which cannot be decided before the rows are combined. Read the pair once both report:
+  | Workload | Result |
+  |---|---|
+  | `ORDER BY` over a 3-way join | Ran 32,247 ms to the timeout. `Cancel()` ignored |
+  | 3-way join, `a.tabid + b.tabid + c.tabid < 0` | Ran 32,118 ms to the timeout. `Cancel()` ignored |
 
-  | Sort | Scan | Means |
-  |---|---|---|
-  | ❌ | ✅ | The server does not check for interrupts mid-sort. PR-3.5 holds for ordinary statements; document the caveat and move on |
-  | ❌ | ❌ | `OdbcCommand.Cancel()` does not meet PR-3.5 here. Slice 1 needs a different strategy |
-  | ✅ | ✅ | The earlier failure was an artefact; PR-3.5 is met |
+  Both ended on `-11094 Timeout expired`, ~30s after `Cancel()` was called, and in both the
+  session was usable immediately afterwards. Sorting has nothing to do with it: **`Cancel()`
+  does not reach this server at all.** PR-3.5's "the token reaches the server via
+  `OdbcCommand.Cancel`" is unmet, and no amount of statement-shaping will change it.
 
-  Still unexamined either way: whether `SQL_ATTR_ASYNC` or the driver's own interrupt setting
-  changes the answer. The fallback — a second connection issuing an administrative cancel —
-  costs the extra session PR-6.4 asks IMS not to add, so it should not be built until the
-  cheaper explanations are eliminated
+  What is still untried, cheapest first:
+
+  1. **`SQL_ATTR_ASYNC_ENABLE`** — `System.Data.Odbc` executes synchronously by default, and
+     `SQLCancel` on a synchronous handle is documented as taking effect only for a small number
+     of states. This is the most likely explanation and needs a spike, not a redesign
+  2. **The CSDK's own interrupt settings** — `INFORMIXCONTIME`/`INFORMIXCONRETRY` do not apply,
+     but the driver has a `SQL_INFX_ATTR_LO_AUTOMATIC`-style family worth reading for an
+     interrupt or cancel option
+  3. **A second connection issuing an administrative cancel** — the fallback. Costs the extra
+     session PR-6.4 asks IMS not to add, so it should not be built while (1) is untested
 - [x] Streaming: does the driver stream or buffer? — PR-4.2, RSK-6. **It streams.** 20,000 rows
   in 1090 ms, first row after 69 ms, managed heap flat. Bounded run, so this is the driver's
   behaviour at that size and says nothing about NFR-2's million rows
@@ -154,11 +158,13 @@ to be equally unmapped.
 - [x] **M** Context-aware completion — PR-3.2. Built in Slice 2 as planned, over the shared `CatalogCache`. See "How completion decides what to offer" below
 - [x] **M** Execute whole script or selection only — PR-3.3
 - [x] **M** Multi-statement execution, each outcome in sequence, failing statement identified by index and offset — PR-3.4
-- [~] **M** Cancel — PR-3.5, RSK-6. The code calls `OdbcCommand.Cancel` rather than only
-  abandoning the await, but **measured against 14.10 on 2026-08-06 the cancel does not reach
-  the server**: the statement ran on to its timeout, 31s after Cancel() was called. The session
-  survives. Until this is resolved the gesture is misleading — the UI returns while the
-  statement continues. See Slice 0's "still blocked on a live server" for what to rule out first
+- [ ] **M** Cancel — PR-3.5, RSK-6. **Not met.** The code calls `OdbcCommand.Cancel` rather
+  than only abandoning the await, but measured against 14.10 on 2026-08-06 that call does not
+  reach the server: two statements, one slow by sorting and one by scanning, both ran on to
+  their 30s timeout ~30s after the cancel. The session survives, so PR-3.5's second half holds
+  and only the first fails. **The gesture is worse than absent** — Alt+Break returns control
+  while the statement keeps running, and the user has no way to tell. Try
+  `SQL_ATTR_ASYNC_ENABLE` before the second-connection fallback; see Slice 0
 - [x] **M** Error surface: SQLCODE + ISAM + explanation, ISAM winning where both exist — PR-3.6
 - [x] **M** Transaction state in the status bar at all times; explicit commit/rollback — PR-3.7
 - [x] **M** Warn before `UPDATE`/`DELETE` with no `WHERE`; literals and comments stripped first — PR-3.8, RSK-7
@@ -231,10 +237,11 @@ Still open, because each needs a live server:
 - [ ] The full §5 acceptance script against **14.10** — RSK-9 *(12.10 descoped, DEC-5)*
 - [ ] A 1,000,000+ row result set stays responsive — NFR-2 *(DEP-3 also unmet)*
 - [ ] 200 ms input acknowledgement under real load — NFR-1, PR-8.5
-- [~] Cancel a long-running statement and keep the session — PR-3.5. **The session is kept; the
-  statement is not cancelled.** Measured 2026-08-06 — see §1b. This is a release blocker for a
-  pilot, since RSK-1's whole premise is not needing `dbaccess`, and an uncancellable statement
-  is a reason to reach for it
+- [ ] Cancel a long-running statement and keep the session — PR-3.5. **The session is kept; the
+  statement is not cancelled.** Confirmed against both a sorting and a scanning workload,
+  2026-08-06 — see §1b. **Pilot blocker.** RSK-1's premise is that IMS stops you reaching for
+  `dbaccess`; a runaway statement you cannot stop is precisely when you would reach for it, and
+  a cancel button that lies is worse than none
 - [ ] Kill the process mid-edit against a live session and confirm recovery — PR-3.9 *(the autosave itself is tested)*
 
 ---
