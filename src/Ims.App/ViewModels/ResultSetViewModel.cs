@@ -54,14 +54,25 @@ public sealed partial class ResultSetViewModel : ObservableObject, IAsyncDisposa
     [ObservableProperty]
     private string _status = string.Empty;
 
-    public ResultSetViewModel(IStatementResult result, string sql, TimeSpan elapsed)
+    public ResultSetViewModel(IStatementResult result, string sql, TimeSpan elapsed, int statementNumber)
     {
         _result = result ?? throw new ArgumentNullException(nameof(result));
         Sql = sql;
         Elapsed = elapsed;
+        StatementNumber = statementNumber;
         Columns = result.Columns;
         UpdateStatus();
     }
+
+    /// <summary>1-based position of the statement that produced this.</summary>
+    /// <remarks>
+    /// PR-3.4 wants each result identified. A row of tabs all labelled "Result" is
+    /// no better than one tab.
+    /// </remarks>
+    public int StatementNumber { get; }
+
+    /// <summary>The tab label.</summary>
+    public string Label => $"Statement {StatementNumber}";
 
     /// <summary>The statement that produced this, shown verbatim (PR-8.2).</summary>
     public string Sql { get; }
@@ -195,8 +206,18 @@ public sealed partial class ResultSetViewModel : ObservableObject, IAsyncDisposa
         await _result.DisposeAsync().ConfigureAwait(false);
     }
 
-    private void UpdateStatus() =>
+    private void UpdateStatus()
+    {
         Status = HasMoreRows
             ? $"{Rows.Count:N0} rows fetched, more available — {Elapsed.TotalMilliseconds:N0} ms"
             : $"{Rows.Count:N0} rows — {Elapsed.TotalMilliseconds:N0} ms";
+
+        // Never let a capped read pass as a complete one. An earlier statement in a
+        // script has its cursor closed so the next can run, and that read is bounded.
+        if (_result.WasTruncated)
+        {
+            Status += " — TRUNCATED: an earlier statement in the script can only keep "
+                      + $"{Rows.Count:N0} rows, because the connection needs its cursor back";
+        }
+    }
 }

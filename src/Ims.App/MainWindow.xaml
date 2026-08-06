@@ -227,7 +227,9 @@
                                        ConverterParameter=2}">
                 <TabControl.ItemTemplate>
                   <DataTemplate>
-                    <TextBlock Text="Result" />
+                    <!-- The statement is on the tooltip, so the result can always be
+                         traced back to what produced it (PR-8.2). -->
+                    <TextBlock Text="{Binding Label}" ToolTip="{Binding Sql}" />
                   </DataTemplate>
                 </TabControl.ItemTemplate>
                 <TabControl.ContentTemplate>

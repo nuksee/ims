@@ -128,7 +128,10 @@ public sealed partial class EditorTabViewModel : ObservableObject, IAsyncDisposa
                         if (captured.Kind == StatementResultKind.RowSet && captured.Result is not null)
                         {
                             var resultViewModel = new ResultSetViewModel(
-                                captured.Result, captured.Sql, captured.Elapsed);
+                                captured.Result,
+                                captured.Sql,
+                                captured.Elapsed,
+                                captured.Index + 1);
 
                             Results.Add(resultViewModel);
                             SelectedResult ??= resultViewModel;
