@@ -53,8 +53,7 @@ public static class Probes
                 results.Add(ProbeResult.Skip("Error detail", "PR-3.6", "No connection."));
                 results.Add(ProbeResult.Skip("Type fidelity", "PR-4.5", "No connection."));
                 results.Add(ProbeResult.Skip("Streaming", "PR-4.2", "No connection."));
-                results.Add(ProbeResult.Skip("Cancellation (sort)", "PR-3.5", "No connection."));
-                results.Add(ProbeResult.Skip("Cancellation (scan)", "PR-3.5", "No connection."));
+                results.Add(ProbeResult.Skip("Cancellation", "PR-3.5", "No connection."));
                 results.Add(ProbeResult.Skip("Cancel via SQL_ATTR_ASYNC_ENABLE", "PR-3.5", "No connection."));
                 results.Add(ProbeResult.Skip("sysmaster readable", "Q-1 / AS-3", "No connection."));
                 return results;
@@ -86,41 +85,57 @@ public static class Probes
             // equally well, and they call for very different responses.
             //
             // The scanning statement is slow without a sort: a cross join whose filter
-            // matches nothing, so the server reads every row and returns none. If the
-            // cancel lands here but not on the sort, the limitation is the sort.
+            // matches nothing, so the server reads every row and returns none.
             //
             // The filter has to span every table in the join. A first attempt tested
             // only `a.tabname`, which the optimiser pushed down to `a` before joining,
             // reduced to no rows, and answered in under two seconds — the cross product
             // was never built. Comparing tabids across all three cannot be decided
             // until the rows are actually combined, so the work has to happen.
+            //
+            // Both are off unless asked for. They answered the question on 2026-08-06
+            // and each spends thirty seconds of cross join to answer it again, which is
+            // a poor trade on an instance shared with production (RSK-5, PR-6.4). The
+            // sort variant is the more redundant of the two: it existed only to find out
+            // whether sorting was what defeated the cancel, and it is not.
             bool boundedCancel = !options.IncludeLoadProbes;
 
-            results.Add(await SafelyAsync("Cancellation (sort)", "PR-3.5",
-                () => CancellationAsync(
-                    connection,
-                    options,
-                    "Cancellation (sort)",
-                    boundedCancel
-                        ? "SELECT FIRST 200 a.tabname FROM systables a, systables b, systables c ORDER BY a.tabname, a.tabid"
-                        : "SELECT COUNT(*) FROM systables a, systables b, systables c, systables d",
-                    boundedCancel ? 30 : 0,
-                    cancellationToken)).ConfigureAwait(false));
+            if (options.RecheckCancellation)
+            {
+                results.Add(await SafelyAsync("Cancellation (sort)", "PR-3.5",
+                    () => CancellationAsync(
+                        connection,
+                        options,
+                        "Cancellation (sort)",
+                        boundedCancel
+                            ? "SELECT FIRST 200 a.tabname FROM systables a, systables b, systables c ORDER BY a.tabname, a.tabid"
+                            : "SELECT COUNT(*) FROM systables a, systables b, systables c, systables d",
+                        boundedCancel ? 30 : 0,
+                        cancellationToken)).ConfigureAwait(false));
 
-            results.Add(await SafelyAsync("Cancellation (scan)", "PR-3.5",
-                () => CancellationAsync(
-                    connection,
-                    options,
-                    "Cancellation (scan)",
-                    boundedCancel
-                        ? "SELECT COUNT(*) FROM systables a, systables b, systables c WHERE a.tabid + b.tabid + c.tabid < 0"
-                        : "SELECT COUNT(*) FROM systables a, systables b, systables c, systables d WHERE a.tabid + b.tabid + c.tabid + d.tabid < 0",
-                    boundedCancel ? 30 : 0,
-                    cancellationToken)).ConfigureAwait(false));
+                results.Add(await SafelyAsync("Cancellation (scan)", "PR-3.5",
+                    () => CancellationAsync(
+                        connection,
+                        options,
+                        "Cancellation (scan)",
+                        boundedCancel
+                            ? "SELECT COUNT(*) FROM systables a, systables b, systables c WHERE a.tabid + b.tabid + c.tabid < 0"
+                            : "SELECT COUNT(*) FROM systables a, systables b, systables c, systables d WHERE a.tabid + b.tabid + c.tabid + d.tabid < 0",
+                        boundedCancel ? 30 : 0,
+                        cancellationToken)).ConfigureAwait(false));
+            }
+            else
+            {
+                results.Add(ProbeResult.Skip(
+                    "Cancellation (sort + scan)",
+                    "PR-3.5",
+                    "Answered 2026-08-06: Cancel() does not reach the server, on either "
+                    + "workload. Skipped by default because re-confirming it costs two 30s "
+                    + "cross joins. Pass --recheck-cancellation after a driver or server "
+                    + "upgrade."));
+            }
 
-            // Only worth running when the synchronous cancel has already failed —
-            // which, measured, it does. Placed straight after so the two appear
-            // together in the output and can be read as one comparison.
+            // The open question, and the reason the cancellation machinery is still here.
             results.Add(await SafelyAsync("Cancel via SQL_ATTR_ASYNC_ENABLE", "PR-3.5",
                 () => AsyncCancelSpike.RunAsync(connection, options, cancellationToken))
                 .ConfigureAwait(false));

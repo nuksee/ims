@@ -61,6 +61,21 @@ public sealed class SmokeTestOptions
     /// </summary>
     public bool AnyLoadProbes => IncludeLightLoadProbes || IncludeLoadProbes;
 
+    /// <summary>
+    /// Re-runs the synchronous cancellation probes, which are otherwise skipped.
+    /// </summary>
+    /// <remarks>
+    /// They answered their question on 2026-08-06 — <c>Cancel()</c> does not reach the
+    /// server, on a sorting or a scanning workload alike — and each costs a 30-second
+    /// cross join to say so again. On an instance shared with production that is a
+    /// recurring cost for a known answer, so they are off by default.
+    /// <para>
+    /// Worth turning on to re-measure after a driver or server upgrade, or to
+    /// re-establish the synchronous baseline the async spike is compared against.
+    /// </para>
+    /// </remarks>
+    public bool RecheckCancellation { get; set; }
+
     public int TimeoutSeconds { get; set; } = 15;
 
     public bool ShowHelp { get; set; }
@@ -103,6 +118,10 @@ public sealed class SmokeTestOptions
 
                 case "--include-light-load":
                     options.IncludeLightLoadProbes = true;
+                    continue;
+
+                case "--recheck-cancellation":
+                    options.RecheckCancellation = true;
                     continue;
 
                 case "--include-load":

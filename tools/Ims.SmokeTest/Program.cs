@@ -72,15 +72,25 @@ internal static class Program
             options switch
             {
                 { IncludeLoadProbes: true } =>
-                    "Load probes: UNBOUNDED (streaming, cancellation). No timeout on the "
-                    + "cancellation query — this must be an instance of its own.",
+                    "Load probes: UNBOUNDED. No timeout on the cancellation query — this must "
+                    + "be an instance of its own.",
                 { IncludeLightLoadProbes: true } =>
-                    "Load probes: bounded (streaming, cancellation). Capped server-side by "
-                    + "FIRST, with a 30s command timeout.",
+                    "Load probes: bounded. Capped server-side by FIRST, with a 30s command "
+                    + "timeout.",
                 _ =>
-                    "Load probes (streaming, cancellation) are off. Add --include-light-load "
-                    + "for the bounded form.",
+                    "Load probes are off. Add --include-light-load for the bounded form.",
             });
+
+        // The expensive probes are worth naming before they run, not after.
+        if (options.AnyLoadProbes)
+        {
+            Console.WriteLine(
+                options.RecheckCancellation
+                    ? "Cancellation: re-running both synchronous probes (~30s each) plus the "
+                      + "async spike."
+                    : "Cancellation: synchronous probes skipped (answered 2026-08-06). Running "
+                      + "the async spike only — pass --recheck-cancellation to re-measure.");
+        }
 
         Console.WriteLine();
 
@@ -215,6 +225,7 @@ internal static class Program
                             [--database <db>] [--user <user>] [--protocol <proto>]
                             [--timeout <seconds>]
                             [--include-light-load | --include-load]
+                            [--recheck-cancellation]
 
             OPTIONS
               --server         Informix server name, as in sqlhosts.       (required)
@@ -239,6 +250,13 @@ internal static class Program
                                use it only on an instance of its own (RSK-5, PR-6.4).
                                Implies the bounded tier.
 
+              --recheck-cancellation
+                               Also re-run the two synchronous cancellation probes.
+                               They are skipped by default: the answer is known and
+                               each spends 30s of cross join to repeat it. Worth it
+                               after a driver or server upgrade, or to re-establish
+                               the baseline the async spike is read against.
+
               -h, --help       Show this text and exit. Touches nothing.
 
             PROBES
@@ -253,12 +271,12 @@ internal static class Program
                                                   the whole result set?
                                                                     [either load flag]
               Cancellation (sort) PR-3.5          Can a running statement be cancelled
-              Cancellation (scan) PR-3.5          without losing the session? Run twice:
-                                                  one statement made slow by sorting,
-                                                  one by scanning. Measured 2026-08-06:
-                                                  neither cancels — the call does not
-                                                  reach the server at all.
-                                                                    [either load flag]
+              Cancellation (scan) PR-3.5          without losing the session? Answered
+                                                  2026-08-06: no, on either workload —
+                                                  the call does not reach the server.
+                                                  Off by default; each costs a 30s
+                                                  cross join to repeat that.
+                                          [--recheck-cancellation + a load flag]
               Cancel via async    PR-3.5          The remaining cheap explanation: does
                                                   SQL_ATTR_ASYNC_ENABLE make the cancel
                                                   land? Same statement as the scan probe

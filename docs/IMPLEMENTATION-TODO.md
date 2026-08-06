@@ -74,6 +74,10 @@ to be equally unmapped.
 >
 > - `--include-light-load` — streaming and cancellation with every statement capped
 >   server-side by `FIRST` and a 30s `CommandTimeout`. The work is bounded *before* it is sent.
+> - `--recheck-cancellation` — the two synchronous cancellation probes are **off by default**
+>   now that they have answered. Each spends a 30-second cross join to reconfirm a known
+>   failure, which is a poor trade against a shared instance. Pass this after a driver or
+>   server upgrade.
 > - `--include-load` — the original unbounded form: a four-way cross join with
 >   `CommandTimeout = 0`. If `Cancel()` does not land, nothing stops it. **Do not run this
 >   against the production server**; it needs an instance of its own (RSK-5, PR-6.4).

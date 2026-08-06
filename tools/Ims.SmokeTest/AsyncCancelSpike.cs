@@ -215,8 +215,10 @@ internal static class AsyncCancelSpike
             }
 
             string context =
-                $" Async enable {readback}. Compare with the synchronous Cancellation (scan) "
-                + "probe, which runs the identical statement.";
+                $" Async enable {readback}. The synchronous baseline for this identical "
+                + "statement is the Cancellation (scan) probe, measured on 2026-08-06 as "
+                + "running to its timeout uncancelled; pass --recheck-cancellation to "
+                + "re-measure it alongside this one.";
 
             if (timedOut)
             {
