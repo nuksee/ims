@@ -93,11 +93,20 @@ to be equally unmapped.
   strength of the code path existing, which this disproves. A user pressing Alt+Break would see
   the UI return while the statement kept running.
 
-  Not yet diagnosed, and worth ruling out before redesigning: whether this is specific to a
-  sort (the server may not check for interrupts while sorting), and whether `SQL_ATTR_ASYNC` or
-  the driver's own interrupt setting changes it. The fallback — a second connection issuing an
-  administrative cancel — costs the extra session PR-6.4 asks IMS not to add, so it should not
-  be built until the cheaper explanations are eliminated
+  **The sort may be the cause rather than the driver**, and that is now testable: the smoke
+  test runs the cancellation probe twice, against one statement made slow by `ORDER BY` and one
+  made slow by scanning a cross join whose filter matches nothing. Read the pair:
+
+  | Sort | Scan | Means |
+  |---|---|---|
+  | ❌ | ✅ | The server does not check for interrupts mid-sort. PR-3.5 holds for ordinary statements; document the caveat and move on |
+  | ❌ | ❌ | `OdbcCommand.Cancel()` does not meet PR-3.5 here. Slice 1 needs a different strategy |
+  | ✅ | ✅ | The earlier failure was an artefact; PR-3.5 is met |
+
+  Still unexamined either way: whether `SQL_ATTR_ASYNC` or the driver's own interrupt setting
+  changes the answer. The fallback — a second connection issuing an administrative cancel —
+  costs the extra session PR-6.4 asks IMS not to add, so it should not be built until the
+  cheaper explanations are eliminated
 - [x] Streaming: does the driver stream or buffer? — PR-4.2, RSK-6. **It streams.** 20,000 rows
   in 1090 ms, first row after 69 ms, managed heap flat. Bounded run, so this is the driver's
   behaviour at that size and says nothing about NFR-2's million rows

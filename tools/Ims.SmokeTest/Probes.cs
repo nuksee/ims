@@ -53,7 +53,8 @@ public static class Probes
                 results.Add(ProbeResult.Skip("Error detail", "PR-3.6", "No connection."));
                 results.Add(ProbeResult.Skip("Type fidelity", "PR-4.5", "No connection."));
                 results.Add(ProbeResult.Skip("Streaming", "PR-4.2", "No connection."));
-                results.Add(ProbeResult.Skip("Cancellation", "PR-3.5", "No connection."));
+                results.Add(ProbeResult.Skip("Cancellation (sort)", "PR-3.5", "No connection."));
+                results.Add(ProbeResult.Skip("Cancellation (scan)", "PR-3.5", "No connection."));
                 results.Add(ProbeResult.Skip("sysmaster readable", "Q-1 / AS-3", "No connection."));
                 return results;
             }
@@ -77,8 +78,38 @@ public static class Probes
             results.Add(await SafelyAsync("Streaming", "PR-4.2",
                 () => StreamingAsync(connection, options, cancellationToken)).ConfigureAwait(false));
 
-            results.Add(await SafelyAsync("Cancellation", "PR-3.5",
-                () => CancellationAsync(connection, options, cancellationToken)).ConfigureAwait(false));
+            // Two workloads, because one cannot tell the two diagnoses apart. The
+            // sorted statement was measured ignoring Cancel() entirely — but sorting
+            // was also the trick that made it slow, so "the driver cannot cancel" and
+            // "the server does not check for interrupts mid-sort" fit that result
+            // equally well, and they call for very different responses.
+            //
+            // The scanning statement is slow without a sort: a cross join whose filter
+            // matches nothing, so the server reads every row and returns none. If the
+            // cancel lands here but not on the sort, the limitation is the sort.
+            bool boundedCancel = !options.IncludeLoadProbes;
+
+            results.Add(await SafelyAsync("Cancellation (sort)", "PR-3.5",
+                () => CancellationAsync(
+                    connection,
+                    options,
+                    "Cancellation (sort)",
+                    boundedCancel
+                        ? "SELECT FIRST 200 a.tabname FROM systables a, systables b, systables c ORDER BY a.tabname, a.tabid"
+                        : "SELECT COUNT(*) FROM systables a, systables b, systables c, systables d",
+                    boundedCancel ? 30 : 0,
+                    cancellationToken)).ConfigureAwait(false));
+
+            results.Add(await SafelyAsync("Cancellation (scan)", "PR-3.5",
+                () => CancellationAsync(
+                    connection,
+                    options,
+                    "Cancellation (scan)",
+                    boundedCancel
+                        ? "SELECT COUNT(*) FROM systables a, systables b, systables c WHERE a.tabname = '~no~such~table~'"
+                        : "SELECT COUNT(*) FROM systables a, systables b, systables c, systables d WHERE a.tabname = '~no~such~table~'",
+                    boundedCancel ? 30 : 0,
+                    cancellationToken)).ConfigureAwait(false));
 
             results.Add(await SafelyAsync("sysmaster readable", "Q-1 / AS-3",
                 () => SysMasterAsync(connection, cancellationToken)).ConfigureAwait(false));
@@ -588,46 +619,42 @@ public static class Probes
     /// PR-3.5, and the one that most constrains Slice 1's design: can a running
     /// statement be cancelled without losing the session?
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Run twice, with two different ways of being slow, because the first
+    /// measurement against 14.10 could not tell two very different diagnoses apart.
+    /// A sorted statement ignored Cancel() entirely and ran to its timeout — but the
+    /// sort was itself the trick used to make it slow, so the result was equally
+    /// consistent with "this driver cannot cancel anything" and with "this server
+    /// does not check for interrupts while sorting". The first is a Slice 1 redesign;
+    /// the second is a much narrower caveat.
+    /// </para>
+    /// <para>
+    /// So <paramref name="sql"/> is supplied by the caller: one sorted workload, one
+    /// that only scans. Same cancel, same bounds, and the pair of outcomes says which
+    /// diagnosis is right.
+    /// </para>
+    /// </remarks>
     private static async Task<ProbeResult> CancellationAsync(
         OdbcConnection connection,
         SmokeTestOptions options,
+        string name,
+        string sql,
+        int timeoutSeconds,
         CancellationToken cancellationToken)
     {
         if (!options.AnyLoadProbes)
         {
             return ProbeResult.Skip(
-                "Cancellation",
+                name,
                 "PR-3.5",
                 "Needs --include-light-load (bounded) or --include-load (unbounded).");
         }
 
-        // Two ways to be slow enough to cancel. The unbounded form is a four-way
-        // cross join with no timeout: nothing stops it if the cancel does not land,
-        // which is the whole hazard on a server shared with production.
-        //
-        // The bounded form has to be slow on purpose while staying bounded, and
-        // CommandTimeout is its backstop — so the worst case if Cancel() does nothing
-        // at all is a statement that ends by itself in 30 seconds rather than one
-        // someone has to hunt down with onmode -z.
-        bool bounded = !options.IncludeLoadProbes;
-
-        // Widening the join and raising the FIRST cap both failed to make this slow:
-        // COUNT(*) over FIRST n lets the optimiser stop at n rows, so the cap was
-        // bounding the work rather than the result, and the statement returned in
-        // under two seconds however large n got.
-        //
-        // ORDER BY is what cannot be short-circuited — no row of a sorted result is
-        // known until every input row has been read. The FIRST cap still bounds what
-        // comes back, and CommandTimeout still ends the whole thing, so the statement
-        // remains bounded in both directions while actually taking time to run.
-        string sql = bounded
-            ? "SELECT FIRST 200 a.tabname FROM systables a, systables b, systables c ORDER BY a.tabname, a.tabid"
-            : "SELECT COUNT(*) FROM systables a, systables b, systables c, systables d";
-
         try
         {
             using var command = new OdbcCommand(sql, connection);
-            command.CommandTimeout = bounded ? 30 : 0;
+            command.CommandTimeout = timeoutSeconds;
 
             var stopwatch = Stopwatch.StartNew();
             Task execute = command.ExecuteScalarAsync(cancellationToken);
@@ -655,10 +682,13 @@ public static class Probes
                 // elapsed time is the corroborating signal, since a cancel that
                 // landed ends the statement near cancelAfterSeconds, not at the
                 // timeout.
+                // CommandTimeout = 0 is "no timeout", so the elapsed-time corroboration
+                // only applies when there is a timeout to have hit.
                 timedOut =
                     ex.Errors.Cast<OdbcError>().Any(e =>
                         string.Equals(e.SQLState, "HYT00", StringComparison.OrdinalIgnoreCase))
-                    || stopwatch.Elapsed.TotalSeconds >= command.CommandTimeout - 1;
+                    || (command.CommandTimeout > 0
+                        && stopwatch.Elapsed.TotalSeconds >= command.CommandTimeout - 1);
 
                 outcome = timedOut
                     ? $"NOT cancelled: the statement ran until the {command.CommandTimeout}s "
@@ -698,7 +728,7 @@ public static class Probes
             if (!sessionSurvived)
             {
                 return ProbeResult.Fail(
-                    "Cancellation",
+                    name,
                     "PR-3.5",
                     $"{outcome}; {survivalDetail}. Slice 1 will need a different cancellation "
                     + "strategy — probably a second connection issuing an administrative cancel.",
@@ -711,14 +741,16 @@ public static class Probes
             if (timedOut)
             {
                 return ProbeResult.Fail(
-                    "Cancellation",
+                    name,
                     "PR-3.5",
-                    $"{outcome}; {survivalDetail}. Cancel() did not reach the server, so "
-                    + "PR-3.5 is not met by OdbcCommand.Cancel() alone on this instance. "
-                    + "Slice 1's cancel gesture would leave the statement running. The "
-                    + "fallback is a second connection issuing an administrative cancel "
-                    + "(onmode -z / SQL ADMIN), which costs the extra session PR-6.4 asks "
-                    + "IMS not to add — so confirm this before building it.",
+                    $"{outcome}; {survivalDetail}. Cancel() did not reach the server for this "
+                    + "workload. Compare against the other cancellation probe before "
+                    + "concluding: if the scan cancels and the sort does not, the limitation "
+                    + "is the sort and PR-3.5 holds for ordinary statements. If neither "
+                    + "cancels, OdbcCommand.Cancel() does not meet PR-3.5 on this instance and "
+                    + "the fallback is a second connection issuing an administrative cancel "
+                    + "(onmode -z / SQL ADMIN) — which costs the extra session PR-6.4 asks IMS "
+                    + "not to add, so confirm it is needed before building it.",
                     sql);
             }
 
@@ -728,21 +760,21 @@ public static class Probes
             if (!cancelLanded)
             {
                 return ProbeResult.Inconclusive(
-                    "Cancellation",
+                    name,
                     "PR-3.5",
                     $"{outcome}, so Cancel() was never actually tested; {survivalDetail}."
-                    + (bounded
-                        ? " The bounded statement was too quick on this instance. Re-run with a"
-                          + " larger FIRST cap, or use --include-load on a server of its own."
+                    + (timeoutSeconds > 0
+                        ? " The bounded statement was too quick on this instance. It needs to be"
+                          + " made slower before this probe can say anything."
                         : string.Empty),
                     sql);
             }
 
-            return ProbeResult.Pass("Cancellation", "PR-3.5", $"{outcome}; {survivalDetail}.", sql);
+            return ProbeResult.Pass(name, "PR-3.5", $"{outcome}; {survivalDetail}.", sql);
         }
         catch (OdbcException ex)
         {
-            return ProbeResult.Fail("Cancellation", "PR-3.5", Describe(ex), sql);
+            return ProbeResult.Fail(name, "PR-3.5", Describe(ex), sql);
         }
     }
 

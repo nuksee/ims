@@ -252,8 +252,13 @@ internal static class Program
               Streaming           PR-4.2, RSK-6   Does the driver stream, or buffer
                                                   the whole result set?
                                                                     [either load flag]
-              Cancellation        PR-3.5          Can a running statement be cancelled
-                                                  without losing the session?
+              Cancellation (sort) PR-3.5          Can a running statement be cancelled
+              Cancellation (scan) PR-3.5          without losing the session? Run twice:
+                                                  one statement made slow by sorting,
+                                                  one by scanning. If the scan cancels
+                                                  and the sort does not, the server is
+                                                  not checking for interrupts mid-sort
+                                                  rather than ignoring cancels.
                                                                     [either load flag]
               sysmaster readable  Q-1, AS-3       THE Slice 3 gate. Run this as an
                                                   ordinary developer, not as informix.
