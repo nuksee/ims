@@ -76,8 +76,14 @@ public static partial class Redaction
     }
 
     // PWD, PASSWORD, PASSWD, SECRET, TOKEN — with or without spaces around '='.
+    //
+    // The value runs to the next ';' or end of line, NOT to the next space. A
+    // connection-string value may legitimately contain spaces, and a password
+    // certainly may. Stopping at whitespace leaked the tail of one during a real
+    // smoke-test run — under-redaction is a breach, over-redaction is only a
+    // less useful log line, so this errs the safe way.
     [GeneratedRegex(
-        @"\b(PWD|PASSWORD|PASSWD|SECRET|TOKEN|APIKEY|API_KEY)\b\s*=\s*[^;,\s]*",
+        @"\b(PWD|PASSWORD|PASSWD|SECRET|TOKEN|APIKEY|API_KEY)\b\s*=\s*[^;\r\n]*",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex PasswordKeyPattern();
 

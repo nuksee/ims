@@ -58,12 +58,30 @@ public static class Probes
                 return results;
             }
 
-            results.Add(await VersionAsync(connection, cancellationToken).ConfigureAwait(false));
-            results.Add(await ErrorDetailAsync(connection, cancellationToken).ConfigureAwait(false));
-            results.Add(await TypeFidelityAsync(connection, cancellationToken).ConfigureAwait(false));
-            results.Add(await StreamingAsync(connection, options, cancellationToken).ConfigureAwait(false));
-            results.Add(await CancellationAsync(connection, options, cancellationToken).ConfigureAwait(false));
-            results.Add(await SysMasterAsync(connection, cancellationToken).ConfigureAwait(false));
+            // Each probe is isolated. An unexpected throw in one must not cost the
+            // answers the others would have given — the first real run was aborted
+            // entirely by an ArgumentException deep inside the ODBC type map, which
+            // hid every subsequent result including the Q-1 answer.
+            results.Add(await SafelyAsync("Version banner", "RSK-9",
+                () => VersionAsync(connection, cancellationToken)).ConfigureAwait(false));
+
+            results.Add(await SafelyAsync("Error detail", "PR-3.6",
+                () => ErrorDetailAsync(connection, cancellationToken)).ConfigureAwait(false));
+
+            results.Add(await SafelyAsync("Interval access", "PR-4.5",
+                () => IntervalAccessAsync(connection, cancellationToken)).ConfigureAwait(false));
+
+            results.Add(await SafelyAsync("Type fidelity", "PR-4.5",
+                () => TypeFidelityAsync(connection, cancellationToken)).ConfigureAwait(false));
+
+            results.Add(await SafelyAsync("Streaming", "PR-4.2",
+                () => StreamingAsync(connection, options, cancellationToken)).ConfigureAwait(false));
+
+            results.Add(await SafelyAsync("Cancellation", "PR-3.5",
+                () => CancellationAsync(connection, options, cancellationToken)).ConfigureAwait(false));
+
+            results.Add(await SafelyAsync("sysmaster readable", "Q-1 / AS-3",
+                () => SysMasterAsync(connection, cancellationToken)).ConfigureAwait(false));
         }
         finally
         {
@@ -74,6 +92,126 @@ public static class Probes
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// Runs one probe, turning any unexpected exception into a failed result.
+    /// </summary>
+    /// <remarks>
+    /// A spike exists to discover things nobody predicted, so it must survive
+    /// discovering them. Letting one probe's surprise abort the run throws away the
+    /// answers the rest would have given.
+    /// </remarks>
+    private static async Task<ProbeResult> SafelyAsync(
+        string name,
+        string requirement,
+        Func<Task<ProbeResult>> probe)
+    {
+        try
+        {
+            return await probe().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            return ProbeResult.Fail(
+                name,
+                requirement,
+                $"The probe itself threw {ex.GetType().Name}: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Finds out whether an Informix INTERVAL can be read through System.Data.Odbc at all.
+    /// </summary>
+    /// <remarks>
+    /// The first real run died here with "Unknown SQL type - 110" — ODBC's
+    /// SQL_INTERVAL_DAY_TO_SECOND, which System.Data.Odbc's type map has no entry
+    /// for. It throws before any value conversion, so the usual accessors are
+    /// unusable and even IsDBNull is not safe.
+    /// <para>
+    /// PR-4.5 makes INTERVAL rendering a Must, so this probe establishes which
+    /// access path, if any, survives. The answer decides whether the ODBC branch of
+    /// DEC-4 can meet PR-4.5 or whether the provider decision has to be reopened.
+    /// </para>
+    /// </remarks>
+    private static async Task<ProbeResult> IntervalAccessAsync(
+        OdbcConnection connection,
+        CancellationToken cancellationToken)
+    {
+        const string sql = """
+            SELECT FIRST 1 INTERVAL (5 12:30:45) DAY TO SECOND AS iv FROM systables
+            """;
+
+        using var command = new OdbcCommand(sql, connection) { CommandTimeout = 30 };
+
+        using OdbcDataReader reader = (OdbcDataReader)await command
+            .ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        {
+            return ProbeResult.Inconclusive("Interval access", "PR-4.5", "No row returned.", sql);
+        }
+
+        var findings = new List<string>();
+        var anyWorked = false;
+
+        // Metadata first: these do not convert a value, so they may survive where
+        // the accessors do not.
+        findings.Add(Try("GetName", () => reader.GetName(0)));
+        findings.Add(Try("GetDataTypeName", () => reader.GetDataTypeName(0)));
+        findings.Add(Try("GetFieldType", () => reader.GetFieldType(0)?.Name ?? "null"));
+        findings.Add(Try("GetSchemaTable", () => reader.GetSchemaTable() is null ? "null" : "ok"));
+
+        // Then every way of getting at the value.
+        findings.Add(Track(Try("IsDBNull", () => reader.IsDBNull(0).ToString())));
+        findings.Add(Track(Try("GetValue", () => reader.GetValue(0)?.ToString() ?? "null")));
+        findings.Add(Track(Try("GetString", () => reader.GetString(0))));
+        findings.Add(Track(Try("GetFieldValue<string>", () => reader.GetFieldValue<string>(0))));
+        findings.Add(Track(Try("GetChars", () => ReadChars(reader, 0))));
+
+        string detail = "How an INTERVAL column can be reached:" + Environment.NewLine
+                        + string.Join(Environment.NewLine, findings.Select(f => "      " + f));
+
+        return anyWorked
+            ? ProbeResult.Pass("Interval access", "PR-4.5",
+                detail + Environment.NewLine
+                       + "      At least one value accessor works — PR-4.5 is reachable over ODBC.",
+                sql)
+            : ProbeResult.Fail("Interval access", "PR-4.5",
+                detail + Environment.NewLine
+                       + "      NO value accessor works. PR-4.5 cannot be met over System.Data.Odbc "
+                       + "without direct ODBC interop, and DEC-4 needs reopening.",
+                sql);
+
+        string Track(string finding)
+        {
+            if (finding.Contains("=> ok:", StringComparison.Ordinal))
+            {
+                anyWorked = true;
+            }
+
+            return finding;
+        }
+    }
+
+    private static string ReadChars(OdbcDataReader reader, int ordinal)
+    {
+        var buffer = new char[64];
+        long read = reader.GetChars(ordinal, 0, buffer, 0, buffer.Length);
+
+        return new string(buffer, 0, (int)Math.Max(read, 0));
+    }
+
+    private static string Try(string label, Func<string?> action)
+    {
+        try
+        {
+            return $"{label,-22} => ok: {action() ?? "null"}";
+        }
+        catch (Exception ex)
+        {
+            return $"{label,-22} => {ex.GetType().Name}: {ex.Message}";
+        }
     }
 
     private static async Task<(ProbeResult Result, OdbcConnection? Connection)> ConnectAsync(
@@ -226,16 +364,28 @@ public static class Probes
             for (int i = 0; i < reader.FieldCount; i++)
             {
                 string name = reader.GetName(i);
-                string serverType = reader.GetDataTypeName(i);
-                object? raw = await reader.IsDBNullAsync(i, cancellationToken).ConfigureAwait(false)
-                    ? null
-                    : reader.GetValue(i);
 
-                InformixDbType mapped = InformixTypeMapper.FromServerTypeName(serverType);
+                // Per column, because a single unreadable one must not cost the
+                // report on all the others. System.Data.Odbc throws from inside its
+                // type map for Informix INTERVAL, before any value handling.
+                try
+                {
+                    string serverType = reader.GetDataTypeName(i);
 
-                lines.Add(
-                    $"{name}: server='{serverType}' clr={raw?.GetType().Name ?? "null"} "
-                    + $"mapped={mapped} value='{raw}'");
+                    object? raw = await reader.IsDBNullAsync(i, cancellationToken).ConfigureAwait(false)
+                        ? null
+                        : reader.GetValue(i);
+
+                    InformixDbType mapped = InformixTypeMapper.FromServerTypeName(serverType);
+
+                    lines.Add(
+                        $"{name}: server='{serverType}' clr={raw?.GetType().Name ?? "null"} "
+                        + $"mapped={mapped} value='{raw}'");
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    lines.Add($"{name}: UNREADABLE — {ex.GetType().Name}: {ex.Message}");
+                }
             }
 
             return ProbeResult.Inconclusive(

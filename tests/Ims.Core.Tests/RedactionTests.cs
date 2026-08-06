@@ -20,6 +20,28 @@ public class RedactionTests
     }
 
     [Fact]
+    public void Redacts_a_password_that_contains_spaces()
+    {
+        // Found during a real smoke-test run: the value pattern stopped at the first
+        // space, so everything after it survived into the output. A connection-string
+        // value may contain spaces, and a password certainly may.
+        string redacted = Redaction.ConnectionString(
+            "Driver={x};Uid=kaveh;Pwd=correct horse battery staple;Database=testdb;");
+
+        redacted.Should().NotContain("horse");
+        redacted.Should().NotContain("battery");
+        redacted.Should().NotContain("staple");
+        redacted.Should().Contain("Database=testdb", "redaction must stop at the separator");
+    }
+
+    [Fact]
+    public void Redacts_to_the_end_of_line_when_there_is_no_separator()
+    {
+        Redaction.Message("connect failed for Pwd=a long secret value")
+            .Should().NotContain("secret");
+    }
+
+    [Fact]
     public void Keeps_the_non_secret_part_of_a_connection_string()
     {
         // NFR-10 still wants logs useful for debugging, so the diagnostic shape survives.

@@ -91,6 +91,15 @@ internal static class Program
             Console.Error.WriteLine("Cancelled.");
             return 4;
         }
+        catch (Exception ex)
+        {
+            // Individual probes are already isolated; this is the backstop, so a
+            // surprise still produces a report rather than a stack trace.
+            Console.Error.WriteLine();
+            Console.Error.WriteLine($"The probe run itself failed: {ex.GetType().Name}: {ex.Message}");
+            Console.Error.WriteLine(ex.StackTrace);
+            return 5;
+        }
 
         PrintResults(results);
 
