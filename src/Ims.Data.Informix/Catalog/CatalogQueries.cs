@@ -93,23 +93,43 @@ internal static class CatalogQueries
         return sql.AppendLine().Append(" ORDER BY owner, procname").ToString();
     }
 
-    /// <summary>User-defined types.</summary>
+    /// <summary>
+    /// User-defined types.
+    /// </summary>
+    /// <remarks>
+    /// This was the one listing query that failed against 14.10, and the cause was
+    /// never diagnosed — the object tree's Types folder is descoped as a result. The
+    /// two-column <see cref="ExtendedTypes"/> form used by the detail pane works
+    /// fine, so the table is readable and the fault is in this query's shape.
+    /// <para>
+    /// The likely culprit was a placeholder <c>WHERE 1 = 1</c> that the predicates
+    /// were appended to; it is gone, and the clause is now built only when there is
+    /// something to put in it. Untested — if the folder is ever revived, this is the
+    /// first thing to try.
+    /// </para>
+    /// </remarks>
     public static string UserDefinedTypes(bool includeSystem, string? nameFilter)
     {
-        var sql = new System.Text.StringBuilder("""
-            SELECT extended_id, name, owner
-              FROM sysxtdtypes
-             WHERE 1 = 1
-            """);
+        var predicates = new List<string>();
 
         if (!includeSystem)
         {
-            sql.AppendLine().Append("   AND owner <> 'informix'");
+            predicates.Add("owner <> 'informix'");
         }
 
         if (!string.IsNullOrWhiteSpace(nameFilter))
         {
-            sql.AppendLine().Append("   AND LOWER(name) LIKE ?");
+            predicates.Add("LOWER(name) LIKE ?");
+        }
+
+        var sql = new System.Text.StringBuilder("""
+            SELECT extended_id, name, owner
+              FROM sysxtdtypes
+            """);
+
+        if (predicates.Count > 0)
+        {
+            sql.AppendLine().Append(" WHERE ").Append(string.Join(Environment.NewLine + "   AND ", predicates));
         }
 
         return sql.AppendLine().Append(" ORDER BY owner, name").ToString();

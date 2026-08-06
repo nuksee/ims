@@ -206,15 +206,22 @@ public sealed partial class MainViewModel : ObservableObject
         StatusText = $"Connected to {descriptor.TargetLabel}"
                      + (session.ServerInfo is { } info ? $" — {info.VersionBanner}" : string.Empty);
 
-        // Adopt the current tab if it has no session yet, rather than always opening
-        // a new one. The startup tab and any tab recovered from autosave (PR-3.9)
-        // begin unconnected, and leaving them that way while the status bar reads
-        // "Connected" is a contradiction the user has to resolve by hand.
-        if (SelectedTab is { Session: null } orphan)
+        // Every tab that has no session yet adopts this one. The startup tab and any
+        // tab recovered from autosave (PR-3.9) begin unconnected, and a tab that
+        // says "Not connected" while the status bar says "Connected" is a
+        // contradiction the user has to resolve by hand for no reason.
+        //
+        // Tabs already bound to another instance keep it — PR-1.6 is explicit that
+        // each editor's target must stay unambiguous.
+        var adopted = 0;
+
+        foreach (EditorTabViewModel tab in Tabs.Where(t => t.Session is null))
         {
-            orphan.Session = session;
+            tab.Session = session;
+            adopted++;
         }
-        else
+
+        if (adopted == 0)
         {
             NewTab(session);
         }
