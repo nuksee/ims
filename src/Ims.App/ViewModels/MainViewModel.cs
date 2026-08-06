@@ -3,6 +3,7 @@ using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Ims.Core.Catalog;
 using Ims.Core.Connections;
 using Ims.Core.Editing;
 using Ims.Core.Data;
@@ -75,6 +76,10 @@ public sealed partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private string _statusText = "Ready";
+
+    /// <summary>The object browser for the current connection (Slice 2).</summary>
+    [ObservableProperty]
+    private ObjectTreeViewModel? _objectTree;
 
     public MainViewModel(
         ConnectionStore connections,
@@ -202,6 +207,42 @@ public sealed partial class MainViewModel : ObservableObject
                      + (session.ServerInfo is { } info ? $" — {info.VersionBanner}" : string.Empty);
 
         NewTab(session);
+
+        await OpenObjectTreeAsync(descriptor, resolver).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// Opens the object browser on its own connection (Slice 2).
+    /// </summary>
+    /// <remarks>
+    /// Failure here is not fatal. The editor works without a tree, and a user whose
+    /// account cannot read the catalogue should still get everything Slice 1 gives
+    /// them — PR-8.4 in the other direction: an absent capability is fine, a broken
+    /// application is not.
+    /// </remarks>
+    private async Task OpenObjectTreeAsync(
+        ConnectionDescriptor descriptor,
+        ICredentialResolver credentials)
+    {
+        if (ObjectTree is { } existing)
+        {
+            ObjectTree = null;
+            await existing.DisposeAsync().ConfigureAwait(true);
+        }
+
+        try
+        {
+            ICatalogReader catalog = await Task.Run(
+                () => _sessionFactory.CreateCatalogReaderAsync(
+                    descriptor, credentials, CancellationToken.None)).ConfigureAwait(true);
+
+            ObjectTree = new ObjectTreeViewModel(descriptor, catalog);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "The object browser could not be opened.");
+            StatusText += " — object browser unavailable: " + ex.Message;
+        }
     }
 
     [RelayCommand]
@@ -215,6 +256,12 @@ public sealed partial class MainViewModel : ObservableObject
         session.StateChanged -= OnSessionStateChanged;
         _sessions.Remove(item.Descriptor.Id);
         item.IsConnected = false;
+
+        if (ObjectTree is { } tree && tree.Descriptor.Id == item.Descriptor.Id)
+        {
+            ObjectTree = null;
+            await tree.DisposeAsync().ConfigureAwait(true);
+        }
 
         foreach (EditorTabViewModel tab in Tabs.Where(t => ReferenceEquals(t.Session, session)))
         {
@@ -285,6 +332,12 @@ public sealed partial class MainViewModel : ObservableObject
     public async Task ShutdownAsync()
     {
         _autosaveTimer.Stop();
+
+        if (ObjectTree is { } tree)
+        {
+            ObjectTree = null;
+            await tree.DisposeAsync().ConfigureAwait(true);
+        }
 
         foreach (EditorTabViewModel tab in Tabs)
         {

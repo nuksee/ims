@@ -98,6 +98,19 @@ public interface IInformixSessionFactory
     /// Creates a session. Does not connect — call <see cref="IInformixSession.OpenAsync"/>.
     /// </summary>
     IInformixSession Create(ConnectionDescriptor descriptor, ICredentialResolver credentials);
+
+    /// <summary>
+    /// Opens a reader for the object browser, on its own connection.
+    /// </summary>
+    /// <remarks>
+    /// Separate from the editor's session on purpose: a connection holds one cursor,
+    /// so a catalogue query issued on the editor's session would close whatever
+    /// result the user is looking at.
+    /// </remarks>
+    Task<Catalog.ICatalogReader> CreateCatalogReaderAsync(
+        ConnectionDescriptor descriptor,
+        ICredentialResolver credentials,
+        CancellationToken cancellationToken);
 }
 
 /// <summary>

@@ -52,6 +52,26 @@ public sealed class BooleanToVisibilityConverter : IValueConverter
         throw new NotSupportedException();
 }
 
+/// <summary>True when the bound value is not null. Enables controls that need one.</summary>
+public sealed class NotNullToBooleanConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is not null;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>Visible only when the bound value is null — for "nothing here yet" text.</summary>
+public sealed class NullToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is null ? Visibility.Visible : Visibility.Collapsed;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
 /// <summary>
 /// Visible once a count reaches the threshold given as the parameter.
 /// </summary>

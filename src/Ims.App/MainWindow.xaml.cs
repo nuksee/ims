@@ -9,6 +9,7 @@ using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Highlighting.Xshd;
 using Ims.App.ViewModels;
 using Ims.App.Views;
+using Ims.Core.Catalog;
 using Ims.Core.Connections;
 using Ims.Core.Data;
 using Ims.Core.Export;
@@ -565,6 +566,107 @@ public partial class MainWindow : Window
         if (_viewModel.SelectedTab?.SelectedResult is { } result)
         {
             await result.FetchMoreAsync(CancellationToken.None);
+        }
+    }
+
+    // ---- Object browser (Slice 2) ----------------------------------------------
+
+    /// <summary>
+    /// Loads a node's children the first time it is expanded (PR-2.2).
+    /// </summary>
+    /// <remarks>
+    /// Hooked from the container style's Expanded event rather than a binding,
+    /// because the load is asynchronous and a property setter cannot await it.
+    /// </remarks>
+    private async void OnTreeItemExpanded(object sender, RoutedEventArgs e)
+    {
+        if ((e.OriginalSource as TreeViewItem)?.DataContext is CatalogNodeViewModel node)
+        {
+            await node.EnsureLoadedAsync(CancellationToken.None);
+        }
+    }
+
+    private void OnTreeSelectionChanged(object sender, RoutedPropertyChangedEventArgs<object> e)
+    {
+        if (_viewModel.ObjectTree is { } tree)
+        {
+            tree.SelectedNode = e.NewValue as CatalogNodeViewModel;
+        }
+    }
+
+    /// <summary>PR-2.8: put a starting query in front of the user, do not run it.</summary>
+    /// <remarks>
+    /// It opens in an editor rather than executing, because PR-6.2 says IMS sends no
+    /// statement the user did not type or explicitly request — and "I clicked a
+    /// table in a tree" is not a request to query it.
+    /// </remarks>
+    private void OnSelectFirstRows(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.ObjectTree?.SelectedObject is not { } schemaObject)
+        {
+            return;
+        }
+
+        if (schemaObject.Kind is not (SchemaObjectKind.Table or SchemaObjectKind.View
+            or SchemaObjectKind.Synonym or SchemaObjectKind.PrivateSynonym))
+        {
+            _viewModel.StatusText = "Only a table, view or synonym can be selected from.";
+            return;
+        }
+
+        BindEditorToSelectedTab();
+
+        _viewModel.NewTab(
+            session: _viewModel.SelectedTab?.Session,
+            sql: $"SELECT FIRST 100 *{Environment.NewLine}  FROM {schemaObject.QualifiedName};",
+            title: schemaObject.Name);
+
+        BindEditorToSelectedTab();
+    }
+
+    private void OnCopyQualifiedName(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.ObjectTree?.SelectedObject is not { } schemaObject)
+        {
+            return;
+        }
+
+        try
+        {
+            Clipboard.SetText(schemaObject.QualifiedName);
+            _viewModel.StatusText = $"Copied {schemaObject.QualifiedName}";
+        }
+        catch (System.Runtime.InteropServices.ExternalException)
+        {
+        }
+    }
+
+    /// <summary>PR-8.2: never hide the server. Show the catalogue query behind the view.</summary>
+    private void OnShowCatalogQuery(object sender, RoutedEventArgs e)
+    {
+        string? sql = _viewModel.ObjectTree?.SelectedQuery;
+
+        if (string.IsNullOrWhiteSpace(sql))
+        {
+            _viewModel.StatusText = "That node has no catalogue query behind it yet — expand it first.";
+            return;
+        }
+
+        BindEditorToSelectedTab();
+
+        _viewModel.NewTab(
+            session: _viewModel.SelectedTab?.Session,
+            sql: sql,
+            title: "Catalogue query");
+
+        BindEditorToSelectedTab();
+    }
+
+    private async void OnRefreshTreeNode(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.ObjectTree is { } tree)
+        {
+            await tree.RefreshNodeAsync(tree.SelectedNode);
         }
     }
 

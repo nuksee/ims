@@ -1,3 +1,4 @@
+using Ims.Core.Catalog;
 using Ims.Core.Connections;
 using Ims.Core.Data;
 using Microsoft.Extensions.Logging;
@@ -41,4 +42,33 @@ public sealed class InformixOdbcSessionFactory : IInformixSessionFactory
             credentials,
             _driverName,
             _loggerFactory.CreateLogger<InformixOdbcSession>());
+
+    public async Task<ICatalogReader> CreateCatalogReaderAsync(
+        ConnectionDescriptor descriptor,
+        ICredentialResolver credentials,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(descriptor);
+        ArgumentNullException.ThrowIfNull(credentials);
+
+        string? password = await credentials
+            .GetPasswordAsync(descriptor, cancellationToken)
+            .ConfigureAwait(false);
+
+        var reader = new Catalog.InformixCatalogReader(
+            InformixOdbcConnectionString.Build(descriptor, _driverName, password),
+            _loggerFactory.CreateLogger<Catalog.InformixCatalogReader>());
+
+        try
+        {
+            await reader.OpenAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            await reader.DisposeAsync().ConfigureAwait(false);
+            throw;
+        }
+
+        return reader;
+    }
 }
