@@ -18,12 +18,16 @@
       "Artifact",
       "Monitor",
       "mcp__claude_ai_Wrike",
+      "PowerShell(dotnet test *)",
       "PowerShell(dotnet build src\\\\Ims.App\\\\Ims.App.csproj -v quiet --nologo 2>&1)",
       "PowerShell(dotnet build tools\\\\Ims.SmokeTest\\\\Ims.SmokeTest.csproj -v quiet --nologo 2>&1)",
       "PowerShell(dotnet run --project tools\\\\Ims.SmokeTest -c Release --no-build -- --help 2>&1)",
       "PowerShell($exe = \"src\\\\Ims.App\\\\bin\\\\Release\\\\net9.0-windows\\\\Ims.exe\"; if \\(-not \\(Test-Path $exe\\)\\) { \"MISSING: $exe\"; exit 1 }; $p = Start-Process $exe -PassThru; Start-Sleep -Seconds 4; $p.Refresh\\(\\); if \\($p.HasExited\\) { \"App exited early with code $\\($p.ExitCode\\)\" } else { \"Running. MainWindowTitle: '$\\($p.MainWindowTitle\\)'\"; $p.CloseMainWindow\\(\\) | Out-Null; Start-Sleep -Seconds 2; $p.Refresh\\(\\); if \\(-not $p.HasExited\\) { $p.Kill\\(\\) }; \"Closed cleanly: $\\($p.HasExited\\)\" })",
       "PowerShell($exe = \"src\\\\Ims.App\\\\bin\\\\Release\\\\net9.0-windows\\\\Ims.exe\"; $out = Join-Path $env:TEMP \"ims-stdout.txt\"; $err = Join-Path $env:TEMP \"ims-stderr.txt\"; $p = Start-Process $exe -PassThru -RedirectStandardOutput $out -RedirectStandardError $err; Start-Sleep -Seconds 5; $p.Refresh\\(\\); \"HasExited: $\\($p.HasExited\\)\"; if \\($p.HasExited\\) { \"ExitCode: $\\($p.ExitCode\\)\" } else { \"MainWindowHandle: $\\($p.MainWindowHandle\\)\"; \"Title: '$\\($p.MainWindowTitle\\)'\"; $p.Kill\\(\\) }; \"--- stderr ---\"; if \\(Test-Path $err\\) { Get-Content $err } ; \"--- stdout ---\"; if \\(Test-Path $out\\) { Get-Content $out })",
-      "PowerShell($msg = Join-Path $env:TEMP \"claude\\\\c--Users-Kaveh-Shahbazi-source-repos-Github-ims\\\\d67f075a-fff3-4840-855b-44165f3bd394\\\\scratchpad\\\\commit-slice0-final.txt\"; git add -A; git -c core.pager=cat commit -F $msg 2>&1 | Select-String -NotMatch 'warning: in the working copy' | Out-String; git log --oneline | Select-Object -First 5)"
+      "PowerShell($msg = Join-Path $env:TEMP \"claude\\\\c--Users-Kaveh-Shahbazi-source-repos-Github-ims\\\\d67f075a-fff3-4840-855b-44165f3bd394\\\\scratchpad\\\\commit-slice0-final.txt\"; git add -A; git -c core.pager=cat commit -F $msg 2>&1 | Select-String -NotMatch 'warning: in the working copy' | Out-String; git log --oneline | Select-Object -First 5)",
+      "PowerShell(git checkout main)",
+      "PowerShell(git merge --ff-only slice-0-foundation)",
+      "PowerShell(git checkout -b slice-1-connect-and-query)"
     ]
   }
 }
