@@ -255,10 +255,18 @@ internal static class Program
               Cancellation (sort) PR-3.5          Can a running statement be cancelled
               Cancellation (scan) PR-3.5          without losing the session? Run twice:
                                                   one statement made slow by sorting,
-                                                  one by scanning. If the scan cancels
-                                                  and the sort does not, the server is
-                                                  not checking for interrupts mid-sort
-                                                  rather than ignoring cancels.
+                                                  one by scanning. Measured 2026-08-06:
+                                                  neither cancels — the call does not
+                                                  reach the server at all.
+                                                                    [either load flag]
+              Cancel via async    PR-3.5          The remaining cheap explanation: does
+                                                  SQL_ATTR_ASYNC_ENABLE make the cancel
+                                                  land? Same statement as the scan probe
+                                                  so the two compare directly. A refusal
+                                                  is an answer too — it closes the route
+                                                  and leaves only the second-connection
+                                                  administrative cancel, which costs the
+                                                  extra session PR-6.4 rules out.
                                                                     [either load flag]
               sysmaster readable  Q-1, AS-3       THE Slice 3 gate. Run this as an
                                                   ordinary developer, not as informix.

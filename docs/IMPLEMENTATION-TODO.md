@@ -111,7 +111,16 @@ to be equally unmapped.
 
   1. **`SQL_ATTR_ASYNC_ENABLE`** — `System.Data.Odbc` executes synchronously by default, and
      `SQLCancel` on a synchronous handle is documented as taking effect only for a small number
-     of states. This is the most likely explanation and needs a spike, not a redesign
+     of states. This is the most likely explanation and needs a spike, not a redesign.
+     **Written (`AsyncCancelSpike`), unrun against Informix.** It runs with the other load
+     probes: sets the attribute via `SQLSetConnectAttr`, checks it reads back, then runs the
+     *same* scanning statement the synchronous probe uses and cancels it, so the two results
+     are directly comparable. The plumbing was verified against a local ODBC driver — handle
+     resolution, the P/Invoke, and reading the driver's own diagnostic all work; that driver
+     answers `HYC00 Optional feature not implemented`, and whether Informix says the same is
+     the open question. A rejection is as useful as an acceptance: it closes the route.
+     The spike reaches the connection handle by reflection over `System.Data.Odbc` internals,
+     which is fine for answering a question and **not** a route IMS itself can take
   2. **The CSDK's own interrupt settings** — `INFORMIXCONTIME`/`INFORMIXCONRETRY` do not apply,
      but the driver has a `SQL_INFX_ATTR_LO_AUTOMATIC`-style family worth reading for an
      interrupt or cancel option

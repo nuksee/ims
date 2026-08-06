@@ -55,6 +55,7 @@ public static class Probes
                 results.Add(ProbeResult.Skip("Streaming", "PR-4.2", "No connection."));
                 results.Add(ProbeResult.Skip("Cancellation (sort)", "PR-3.5", "No connection."));
                 results.Add(ProbeResult.Skip("Cancellation (scan)", "PR-3.5", "No connection."));
+                results.Add(ProbeResult.Skip("Cancel via SQL_ATTR_ASYNC_ENABLE", "PR-3.5", "No connection."));
                 results.Add(ProbeResult.Skip("sysmaster readable", "Q-1 / AS-3", "No connection."));
                 return results;
             }
@@ -116,6 +117,13 @@ public static class Probes
                         : "SELECT COUNT(*) FROM systables a, systables b, systables c, systables d WHERE a.tabid + b.tabid + c.tabid + d.tabid < 0",
                     boundedCancel ? 30 : 0,
                     cancellationToken)).ConfigureAwait(false));
+
+            // Only worth running when the synchronous cancel has already failed —
+            // which, measured, it does. Placed straight after so the two appear
+            // together in the output and can be read as one comparison.
+            results.Add(await SafelyAsync("Cancel via SQL_ATTR_ASYNC_ENABLE", "PR-3.5",
+                () => AsyncCancelSpike.RunAsync(connection, options, cancellationToken))
+                .ConfigureAwait(false));
 
             results.Add(await SafelyAsync("sysmaster readable", "Q-1 / AS-3",
                 () => SysMasterAsync(connection, cancellationToken)).ConfigureAwait(false));
@@ -829,7 +837,7 @@ public static class Probes
         return await command.ExecuteScalarAsync(cancellationToken).ConfigureAwait(false);
     }
 
-    private static string Describe(OdbcException exception)
+    internal static string Describe(OdbcException exception)
     {
         if (exception.Errors.Count == 0)
         {
