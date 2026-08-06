@@ -58,7 +58,11 @@ to be equally unmapped.
 
 ### Still blocked on a live server
 
-- [ ] Run against a **12.10** instance — only 14.10 has been tested (RSK-9, DEC-5)
+- [x] ~~Run against a **12.10** instance~~ — **descoped by the owner, 2026-08-06.** Only 14.10
+  is verified. This weakens RSK-9's stated mitigation ("test both from Slice 1 onward, not at
+  the end"), so NFR-4's capability detection now carries that risk alone: nothing may branch
+  on a version number, and any catalogue feature absent in 12.10 must degrade rather than
+  fail. DEC-5 still lists 12.10 as supported — it is simply supported untested
 - [ ] Cancellation: does `OdbcCommand.Cancel()` leave the session usable? — PR-3.5 *(needs `--include-load`, so a non-production instance)*
 - [ ] Streaming: does the driver stream or buffer? — PR-4.2, RSK-6 *(same)*
 - [ ] ISAM error reporting, via a lock conflict or constraint violation — PR-3.6
