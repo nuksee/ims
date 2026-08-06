@@ -34,6 +34,18 @@ public sealed record ColumnDetail
     public required int RawColLength { get; init; }
 }
 
+/// <summary>One column of an index key, in key order.</summary>
+/// <remarks>
+/// The direction is kept as a flag rather than baked into the name. Scripting needs
+/// the two apart — <c>CREATE INDEX</c> wants <c>col desc</c>, while a primary key
+/// clause wants the bare column — and recovering one from the other by string
+/// surgery would misread a quoted identifier that happens to end in "DESC".
+/// </remarks>
+public sealed record IndexKeyColumn(string Name, bool Descending)
+{
+    public override string ToString() => Descending ? Name + " DESC" : Name;
+}
+
 /// <summary>One index (PR-2.4).</summary>
 public sealed record IndexDetail
 {
@@ -45,8 +57,11 @@ public sealed record IndexDetail
 
     public required bool IsClustered { get; init; }
 
-    /// <summary>Column names in key order; a descending column is prefixed with a minus.</summary>
-    public required IReadOnlyList<string> Columns { get; init; }
+    /// <summary>The key, in order.</summary>
+    public required IReadOnlyList<IndexKeyColumn> Keys { get; init; }
+
+    /// <summary>The key as display text, a descending column marked DESC.</summary>
+    public IReadOnlyList<string> Columns => [.. Keys.Select(k => k.ToString())];
 
     /// <summary>True when this index exists to enforce a constraint rather than on its own.</summary>
     public bool BacksConstraint { get; init; }
@@ -78,6 +93,9 @@ public sealed record ConstraintDetail
 
     /// <summary>For a foreign key: the table it references.</summary>
     public string? ReferencedTable { get; init; }
+
+    /// <summary>The owner of <see cref="ReferencedTable"/>, needed to script the reference.</summary>
+    public string? ReferencedOwner { get; init; }
 
     public IReadOnlyList<string> ReferencedColumns { get; init; } = [];
 

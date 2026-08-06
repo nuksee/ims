@@ -235,6 +235,9 @@
               <MenuItem Header="Show _detail"
                         Click="OnShowObjectDetail"
                         IsEnabled="{Binding ObjectTree.CanSelectRows, FallbackValue=False}" />
+              <MenuItem Header="Script as CRE_ATE"
+                        Click="OnScriptObject"
+                        IsEnabled="{Binding ObjectTree.CanScriptSelection, FallbackValue=False}" />
               <MenuItem Header="_Copy qualified name"
                         Click="OnCopyQualifiedName"
                         IsEnabled="{Binding ObjectTree.HasSelectedObject, FallbackValue=False}" />

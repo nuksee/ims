@@ -269,6 +269,21 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
         return new CatalogResult<string>(lines, sql);
     }
 
+    public async Task<CatalogResult<string>> GetViewSourceAsync(
+        int tabId,
+        CancellationToken cancellationToken)
+    {
+        const string sql = CatalogQueries.ViewSource;
+
+        var fragments = await QueryAsync(
+            sql,
+            reader => GetString(reader, 0) ?? string.Empty,
+            cancellationToken,
+            tabId).ConfigureAwait(false);
+
+        return new CatalogResult<string>(fragments, sql);
+    }
+
     // ---- Table detail (PR-2.4) --------------------------------------------------
 
     public async Task<TableDetail> GetTableDetailAsync(int tabId, CancellationToken cancellationToken)
@@ -595,7 +610,7 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
                 IsUnique = string.Equals(r.IdxType, "U", StringComparison.OrdinalIgnoreCase),
                 IsClustered = string.Equals(r.Clustered, "C", StringComparison.OrdinalIgnoreCase),
                 Levels = r.Levels,
-                Columns = r.Parts.Select(p => NameForPart(p, columns)).ToList(),
+                Keys = r.Parts.Select(p => KeyForPart(p, columns)).ToList(),
             }).ToList();
         }
         catch (OdbcException ex)
@@ -634,17 +649,19 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
                 ConstraintKind kind = DescribeConstraint(rawType);
 
                 // Prefer the backing index's key: it gives the columns in key order,
-                // which syscoldepend does not.
+                // which syscoldepend does not. The direction is dropped — a key can be
+                // descending, but a constraint's column list is written without it.
                 IReadOnlyList<string> columns =
                     indexes.FirstOrDefault(i =>
-                        string.Equals(i.Name, row.IdxName, StringComparison.OrdinalIgnoreCase))?.Columns
+                            string.Equals(i.Name, row.IdxName, StringComparison.OrdinalIgnoreCase))
+                        ?.Keys.Select(k => k.Name).ToList()
                     ?? await ReadConstraintColumnsAsync(row.ConstrId, cancellationToken).ConfigureAwait(false);
 
                 string? checkText = kind == ConstraintKind.Check
                     ? await ReadCheckTextAsync(row.ConstrId, cancellationToken).ConfigureAwait(false)
                     : null;
 
-                (string? refTable, _) = kind == ConstraintKind.ForeignKey
+                (string? refTable, string? refOwner) = kind == ConstraintKind.ForeignKey
                     ? await ReadForeignKeyTargetAsync(row.ConstrId, cancellationToken).ConfigureAwait(false)
                     : (null, null);
 
@@ -657,6 +674,7 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
                     IndexName = string.IsNullOrWhiteSpace(row.IdxName) ? null : row.IdxName,
                     CheckExpression = checkText,
                     ReferencedTable = refTable,
+                    ReferencedOwner = refOwner,
                     RawConstraintType = rawType,
                 });
             }
@@ -710,7 +728,15 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
         }
     }
 
-    private async Task<(string? Table, string? Constraint)> ReadForeignKeyTargetAsync(
+    /// <summary>
+    /// The table a foreign key points at, with its owner.
+    /// </summary>
+    /// <remarks>
+    /// The owner matters: PR-2.6 has to write <c>references "owner".table</c>, and an
+    /// unqualified reference resolves against the connected user rather than the
+    /// table the constraint actually points at.
+    /// </remarks>
+    private async Task<(string? Table, string? Owner)> ReadForeignKeyTargetAsync(
         int constrId,
         CancellationToken cancellationToken)
     {
@@ -720,12 +746,11 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
                 CatalogQueries.ForeignKeyTarget,
                 reader => (
                     Table: (GetString(reader, 0) ?? string.Empty).TrimEnd(),
-                    Owner: (GetString(reader, 1) ?? string.Empty).TrimEnd(),
-                    Constraint: (GetString(reader, 2) ?? string.Empty).TrimEnd()),
+                    Owner: (GetString(reader, 1) ?? string.Empty).TrimEnd()),
                 cancellationToken,
                 constrId).ConfigureAwait(false);
 
-            return rows.Count == 0 ? (null, null) : (rows[0].Table, rows[0].Constraint);
+            return rows.Count == 0 ? (null, null) : (rows[0].Table, rows[0].Owner);
         }
         catch (OdbcException)
         {
@@ -1075,7 +1100,7 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
             _ => dbType.ToString().ToUpperInvariant(),
         };
 
-    private static string NameForPart(int part, IReadOnlyList<ColumnDetail> columns)
+    internal static IndexKeyColumn KeyForPart(int part, IReadOnlyList<ColumnDetail> columns)
     {
         // A negative part number means the column is indexed in descending order.
         bool descending = part < 0;
@@ -1084,6 +1109,6 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
         string name = columns.FirstOrDefault(c => c.Position == colno)?.Name
                       ?? $"(column {colno})";
 
-        return descending ? name + " DESC" : name;
+        return new IndexKeyColumn(name, descending);
     }
 }

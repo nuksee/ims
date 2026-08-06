@@ -149,20 +149,53 @@ Still open, because each needs a live server:
 > find a table by partial name, read columns/indexes/constraints/storage/fragmentation
 > without writing a query, script its DDL at `dbschema` fidelity.
 
-- [ ] **M** Catalogue query layer over `systables` et al., with capability detection rather than version branching — NFR-4, DEC-5
+- [x] **M** Catalogue query layer over `systables` et al., with capability detection rather than version branching — NFR-4, DEC-5
 - [~] **M** Object tree — PR-2.1. **Verified against 14.10:** tables, views, synonyms, sequences, procedures, functions and indexes all list correctly. **User-defined types are not shown** — the `sysxtdtypes` query was the one listing query that failed, and the owner descoped it on 2026-08-06 rather than spend time diagnosing it. PR-2.1 names UDTs, so this Must is *partly* met. Constraints and triggers appear in the table detail pane rather than as tree folders
 - [x] **M** Strictly on-demand loading of children; virtualised tree — PR-2.2, NFR-1, NFR-2
 - [x] **M** Filter by object name; owner filter supported by the reader but not yet surfaced in the UI — PR-2.3
-- [ ] **M** Table detail pane: columns + types + nullability, indexes, constraints, triggers, owner, estimated row count, dbspace, lock mode, extent sizing, fragmentation strategy — PR-2.4
-- [ ] **M** Statistics currency indicator (current vs stale) — PR-2.5
-- [ ] **M** DDL scripting into a new editor tab, at `dbschema` fidelity. Diff against real `dbschema` output as the test — PR-2.6
+- [x] **M** Table detail pane: columns + types + nullability, indexes, constraints, triggers, owner, estimated row count, dbspace, lock mode, extent sizing, fragmentation strategy — PR-2.4. **Verified against 14.10** on 2026-08-06: defaults, `sysxtdtypes`-resolved types (`LVARCHAR`, `BOOLEAN`, a UDT), index uniqueness, statistics and lock mode all read correctly
+- [x] **M** Statistics currency indicator (current vs stale) — PR-2.5. `ustlowts` is probed once and remembered; absent, IMS reports Unknown rather than guessing
+- [~] **M** DDL scripting into a new editor tab, at `dbschema` fidelity — PR-2.6. Built for tables, views, indexes, procedures and functions. **The acceptance test is not run:** `dbschema` ships with the *server*, not the CSDK, so it is not on the development machine — see "Open verification" below
 - [x] **M** Subtree refresh without rebuilding the whole tree — PR-2.7
 - [x] **M** Show the underlying catalogue query behind a tree node — PR-8.2, PR-8.3 *(detail pane still to come)*
-- [ ] **M** In-context explanation of Informix concepts surfaced in the detail pane (dbspace, extent, fragmentation) — NFR-11
-- [~] **S** Tree shortcuts — PR-2.8. `SELECT` first 100 rows and copy qualified name are in; "script object" waits on PR-2.6
+- [x] **M** In-context explanation of Informix concepts surfaced in the detail pane (dbspace, extent, fragmentation) — NFR-11. `InformixConcepts` in the detail view model
+- [x] **S** Tree shortcuts — PR-2.8. `SELECT` first 100 rows, copy qualified name, and "Script as CREATE"
 - [ ] **S** Dependencies and dependents — PR-2.9 *(Slice 4)*
 - [ ] **S** Whole-database re-runnable schema script — PR-2.10 *(Slice 4)*
 - [ ] Exit check: 20,000+ object database, no stall — NFR-2
+
+### PR-2.6 — what the scripter covers, and what it does not
+
+Scripted: **tables** (columns, types, defaults, nullability, primary/unique/foreign/check
+constraints, standalone indexes, dbspace, fragmentation, extent sizing, lock mode),
+**views** (from `sysviews.viewtext`, the server's own words), **indexes**,
+**procedures** and **functions** (from `sysprocbody`).
+
+Not scripted, and the menu item greys out rather than producing an empty tab:
+synonyms, sequences and user-defined types.
+
+Deliberate differences from `dbschema`, each one written into `DdlScripter`'s remarks:
+
+| Difference | Why |
+|---|---|
+| Two leading `--` provenance lines | A script with no provenance is one someone will read as the server's own words |
+| No `{ TABLE … row size = n }` banner | It reports storage arithmetic IMS does not compute — PR-8.4 rules out presenting an inference as a fact |
+| No `grant`/`revoke` | IMS does not read `systabauth`. The comment says so rather than leaving it to be discovered |
+| Triggers listed in a trailing comment, not scripted | Their text is in `systrigbody`, which IMS does not read |
+| `serial` without `not null` | `dbschema` writes the words; Informix rejects them on some paths. A script that runs beats a byte-exact diff |
+
+**Open verification.** PR-2.6's own acceptance test is a diff against real `dbschema`
+output. `dbschema` ships with the Informix *server*, not the CSDK, so it is not on this
+machine and the diff needs someone with server access:
+
+```
+dbschema -d <db> -t <table>
+```
+
+against the same table IMS scripts. The unit tests pin the output to the format
+transcribed from `dbschema`'s published shape, so the diff is against a deliberate
+baseline rather than whatever the code happened to emit — but a transcription is not a
+comparison, and this stays `[~]` until the comparison is run.
 
 ---
 

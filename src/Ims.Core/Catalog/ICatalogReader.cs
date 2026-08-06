@@ -51,6 +51,16 @@ public interface ICatalogReader
     Task<CatalogResult<string>> GetRoutineSourceAsync(int procId, CancellationToken cancellationToken);
 
     /// <summary>
+    /// A view's defining text, as <c>sysviews</c> stores it.
+    /// </summary>
+    /// <remarks>
+    /// Informix keeps the whole <c>CREATE VIEW</c> statement here, split across
+    /// numbered rows, so scripting a view (PR-2.6) is a matter of reassembling what
+    /// the server already has rather than rebuilding the statement from a column list.
+    /// </remarks>
+    Task<CatalogResult<string>> GetViewSourceAsync(int tabId, CancellationToken cancellationToken);
+
+    /// <summary>
     /// Owners that actually own something, for the filter in PR-2.3.
     /// </summary>
     Task<CatalogResult<string>> GetOwnersAsync(CancellationToken cancellationToken);

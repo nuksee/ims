@@ -623,6 +623,55 @@ public partial class MainWindow : Window
         BindEditorToSelectedTab();
     }
 
+    /// <summary>
+    /// Scripts the selected object into a new editor tab (PR-2.6, PR-2.8).
+    /// </summary>
+    /// <remarks>
+    /// Into an editor, not a read-only viewer: the point of scripting an object is
+    /// usually to change something about it, and PR-6.2 means IMS will not run it
+    /// either way until the user asks.
+    /// </remarks>
+    private async void OnScriptObject(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.ObjectTree is not { } tree || tree.SelectedObject is not { } schemaObject)
+        {
+            return;
+        }
+
+        _viewModel.StatusText = $"Scripting {schemaObject.Name}…";
+
+        ScriptResult result;
+
+        try
+        {
+            result = await tree.ScriptSelectionAsync(CancellationToken.None);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // NFR-4: a catalogue the user cannot fully read is an ordinary thing to
+            // meet, and it should cost the script rather than the application.
+            _viewModel.StatusText = $"Could not script {schemaObject.Name}: {ex.Message}";
+            return;
+        }
+
+        if (result.Unsupported is { } reason)
+        {
+            _viewModel.StatusText = reason;
+            return;
+        }
+
+        BindEditorToSelectedTab();
+
+        _viewModel.NewTab(
+            session: _viewModel.SelectedTab?.Session,
+            sql: result.Sql,
+            title: schemaObject.Name + " (DDL)");
+
+        BindEditorToSelectedTab();
+
+        _viewModel.StatusText = $"Scripted {schemaObject.QualifiedName}.";
+    }
+
     private void OnCopyQualifiedName(object sender, RoutedEventArgs e)
     {
         if (_viewModel.ObjectTree?.SelectedObject is not { } schemaObject)

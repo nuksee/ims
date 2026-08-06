@@ -311,4 +311,20 @@ internal static class CatalogQueries
            AND datakey = 'T'
          ORDER BY seqno
         """;
+
+    /// <summary>
+    /// A view's defining text (PR-2.6).
+    /// </summary>
+    /// <remarks>
+    /// <c>viewtext</c> holds the complete <c>CREATE VIEW</c> statement the view was
+    /// made with, split across numbered rows — so a view scripts back exactly as it
+    /// was written, which no amount of reconstruction from <c>syscolumns</c> would
+    /// achieve.
+    /// </remarks>
+    public const string ViewSource = """
+        SELECT viewtext
+          FROM sysviews
+         WHERE tabid = ?
+         ORDER BY seqno
+        """;
 }

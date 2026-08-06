@@ -67,6 +67,16 @@ public class CatalogQueryCompositionTests
     }
 
     [Fact]
+    public void A_views_text_comes_back_in_the_order_the_server_stored_it()
+    {
+        // sysviews splits the CREATE VIEW statement across numbered rows; concatenating
+        // them out of order would produce syntactically valid nonsense (PR-2.6).
+        CatalogQueries.ViewSource.Should().Contain("sysviews");
+        CatalogQueries.ViewSource.Should().Contain("tabid = ?");
+        CatalogQueries.ViewSource.TrimEnd().Should().EndWith("ORDER BY seqno");
+    }
+
+    [Fact]
     public void Table_detail_queries_are_all_keyed_on_tabid()
     {
         // PR-6.4: negligible on a production instance. Every per-table query has to
@@ -227,6 +237,37 @@ public class CatalogTranslationTests
     {
         InformixCatalogReader.DescribeDefault('L', null, InformixDbType.Integer)
             .Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_negative_index_part_is_a_descending_column()
+    {
+        // sysindexes encodes direction in the sign of the part number. Scripting needs
+        // the direction and the name apart — CREATE INDEX wants "col desc", a primary
+        // key clause wants the bare column (PR-2.6).
+        IReadOnlyList<ColumnDetail> columns =
+        [
+            new()
+            {
+                Position = 2,
+                Name = "lname",
+                DbType = InformixDbType.Char,
+                TypeDescription = "CHAR(15)",
+                IsNullable = true,
+                RawColType = 0,
+                RawColLength = 15,
+            },
+        ];
+
+        InformixCatalogReader.KeyForPart(2, columns).Should().Be(new IndexKeyColumn("lname", false));
+        InformixCatalogReader.KeyForPart(-2, columns).Should().Be(new IndexKeyColumn("lname", true));
+    }
+
+    [Fact]
+    public void An_index_part_naming_a_column_that_was_not_read_says_so()
+    {
+        // PR-8.4: the tree shows what the catalogue said, not an invented name.
+        InformixCatalogReader.KeyForPart(7, []).Name.Should().Be("(column 7)");
     }
 
     [Theory]

@@ -85,6 +85,30 @@ public sealed partial class ObjectTreeViewModel : ObservableObject, IAsyncDispos
 
     public bool HasSelectedObject => SelectedObject is not null;
 
+    /// <summary>True when PR-2.6 can produce DDL for the selection.</summary>
+    public bool CanScriptSelection =>
+        SelectedObject is { } selected && ObjectScripter.CanScript(selected.Kind);
+
+    /// <summary>
+    /// Scripts the selection as DDL (PR-2.6).
+    /// </summary>
+    /// <remarks>
+    /// Runs off the dispatcher because it is several catalogue round trips — NFR-1 —
+    /// and returns rather than opening a tab itself, because where the script lands
+    /// is the shell's business, not the tree's.
+    /// </remarks>
+    public Task<ScriptResult> ScriptSelectionAsync(CancellationToken cancellationToken)
+    {
+        if (SelectedObject is not { } selected)
+        {
+            return Task.FromResult(new ScriptResult(string.Empty, "Nothing is selected."));
+        }
+
+        return Task.Run(
+            () => new ObjectScripter(_catalog).ScriptAsync(selected, cancellationToken),
+            cancellationToken);
+    }
+
     private ObservableCollection<CatalogNodeViewModel> BuildFolders() =>
     [
         Folder("Tables", SchemaObjectKind.Table),
@@ -162,6 +186,7 @@ public sealed partial class ObjectTreeViewModel : ObservableObject, IAsyncDispos
         OnPropertyChanged(nameof(SelectedObject));
         OnPropertyChanged(nameof(CanSelectRows));
         OnPropertyChanged(nameof(HasSelectedObject));
+        OnPropertyChanged(nameof(CanScriptSelection));
 
         _ = RefreshDetailAsync(CancellationToken.None);
     }
