@@ -267,11 +267,14 @@ Small affordances with no PRD requirement behind them. They are recorded here ra
 PRD §8 because §8 is the pressure valve for *capabilities* (RSK-2), and sizing these as
 deferred scope would overstate them. None is a Must; none should displace a Must.
 
-- [ ] Middle-click a tab header to close it — a second affordance over the existing ✕, which
-  already calls `MainViewModel.CloseTabAsync`. A `MouseDown` handler on the tab-header
-  `DataTemplate` checking `ChangedButton == MiddleButton`. Must go through the same close path,
-  so the PR-3.9 autosave and any unsaved-content prompt still apply — a close route that
-  bypasses them would be a data-loss bug, not a shortcut
+- [x] Middle-click a tab header to close it — a second affordance over the existing ✕, never a
+  replacement, so NFR-8 keeps a route that needs no three-button mouse. Hooked via
+  `ItemContainerStyle` on the whole `TabItem` rather than the item template, because aiming at
+  the label is not how anyone middle-clicks. It goes through the same `CloseTabAsync` path, so
+  PR-3.9's autosave still applies. Two faults surfaced while building it, both from closing a
+  tab that is *not* the one on screen — the ordinary case for this gesture and one the ✕ made
+  rare: unsaved text in the visible editor was not flushed to its own tab first, and selection
+  jumped to the last tab instead of staying put. Both fixed
 - [ ] **Switch the bottom pane to Messages when a statement fails** — arguably a **PR-3.4
   refinement** rather than polish: PR-3.4 requires "indicating clearly which statement failed",
   and today the failure is written into `Outcomes` (the Messages list) while the pane stays on

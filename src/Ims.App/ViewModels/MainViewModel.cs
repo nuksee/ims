@@ -342,6 +342,16 @@ public sealed partial class MainViewModel : ObservableObject
     [RelayCommand]
     public void NewQuery() => NewTab();
 
+    /// <summary>
+    /// Closes a tab and picks the next selection.
+    /// </summary>
+    /// <remarks>
+    /// Selection only moves if the tab being closed was the selected one, and then it
+    /// lands on the neighbour rather than the end of the strip. Closing a tab you were
+    /// not looking at used to jump you to the last one, which was tolerable when the
+    /// only way to close was a deliberate click on that tab's ✕ and is not now that
+    /// middle-click makes closing a background tab a passing gesture.
+    /// </remarks>
     [RelayCommand]
     public async Task CloseTabAsync(EditorTabViewModel? tab)
     {
@@ -350,12 +360,18 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
+        int index = Tabs.IndexOf(tab);
+        bool wasSelected = ReferenceEquals(SelectedTab, tab);
+
         Tabs.Remove(tab);
         _autosave.Discard(TabKey(tab));
 
         await tab.DisposeAsync().ConfigureAwait(true);
 
-        SelectedTab = Tabs.LastOrDefault();
+        if (wasSelected)
+        {
+            SelectedTab = Tabs.Count == 0 ? null : Tabs[Math.Min(index, Tabs.Count - 1)];
+        }
     }
 
     /// <summary>Restores anything left behind by a run that did not close cleanly (PR-3.9).</summary>

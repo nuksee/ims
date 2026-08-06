@@ -465,7 +465,56 @@ public partial class MainWindow : Window
     {
         if ((sender as FrameworkElement)?.DataContext is EditorTabViewModel tab)
         {
-            await _viewModel.CloseTabAsync(tab);
+            await CloseTabAsync(tab);
+        }
+    }
+
+    /// <summary>Middle-click closes a tab, as every browser and editor has taught.</summary>
+    private async void OnTabHeaderMouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton != MouseButton.Middle
+            || (sender as FrameworkElement)?.DataContext is not EditorTabViewModel tab)
+        {
+            return;
+        }
+
+        // Middle-click does not activate a tab, and the click must not travel on and
+        // leave the header looking pressed.
+        e.Handled = true;
+
+        await CloseTabAsync(tab);
+    }
+
+    /// <summary>
+    /// Closes one tab, leaving the editor where it was if it was somewhere else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The rebind is conditional, and that is the whole point. One AvalonEdit
+    /// instance serves every tab, so <see cref="BindEditorToSelectedTab"/> assigns
+    /// <c>Editor.Text</c> — which replaces the document, sends the caret to the top
+    /// and pushes an undo entry. Doing that because the user closed a <em>different</em>
+    /// tab would throw away their place for no reason (PR-8.5).
+    /// </para>
+    /// <para>
+    /// The text still has to be persisted first. Closing a tab you are not looking at
+    /// is the ordinary case for middle-click, and PR-3.9's promise that typing is
+    /// never lost makes no exception for it.
+    /// </para>
+    /// </remarks>
+    private async Task CloseTabAsync(EditorTabViewModel tab)
+    {
+        bool closingTheOneOnScreen = ReferenceEquals(_editorBoundTo, tab);
+
+        if (_editorBoundTo is not null && !closingTheOneOnScreen)
+        {
+            _editorBoundTo.Sql = Editor.Text;
+        }
+
+        await _viewModel.CloseTabAsync(tab);
+
+        if (closingTheOneOnScreen || !ReferenceEquals(_editorBoundTo, _viewModel.SelectedTab))
+        {
             BindEditorToSelectedTab();
         }
     }

@@ -298,6 +298,19 @@
                     SelectionChanged="OnTabChanged"
                     BorderThickness="0"
                     Padding="0" Height="26">
+          <!--
+            Middle-click closes a tab. Hooked on the container rather than on the
+            item template so the whole header is the target: aiming at the label is
+            not how anyone middle-clicks a tab.
+
+            It is an addition to the ✕ button, never a replacement — NFR-8 needs a
+            way to close a tab that does not require a three-button mouse.
+          -->
+          <TabControl.ItemContainerStyle>
+            <Style TargetType="TabItem">
+              <EventSetter Event="MouseDown" Handler="OnTabHeaderMouseDown" />
+            </Style>
+          </TabControl.ItemContainerStyle>
           <TabControl.ItemTemplate>
             <DataTemplate>
               <StackPanel Orientation="Horizontal">
@@ -305,6 +318,7 @@
                 <Button Content="✕" Margin="6,0,0,0" Padding="3,0" FontSize="10"
                         BorderThickness="0" Background="Transparent"
                         Click="OnCloseTab"
+                        ToolTip="Close this tab — or middle-click the tab"
                         AutomationProperties.Name="Close tab" />
               </StackPanel>
             </DataTemplate>
