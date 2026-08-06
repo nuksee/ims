@@ -25,6 +25,13 @@
     <!-- Windows Credential Manager + registry access. DEC-9, PR-1.4, PR-1.8. -->
     <PackageVersion Include="Microsoft.Win32.Registry" Version="5.0.0" />
 
+    <!-- PR-4.6 Excel export. MIT, so it does not compromise the DEC-10 option of a
+         product or open-source release. -->
+    <PackageVersion Include="ClosedXML" Version="0.104.2" />
+
+    <!-- PR-3.1 / PR-3.2: the SQL editor. MIT. -->
+    <PackageVersion Include="AvalonEdit" Version="6.3.0.90" />
+
     <!-- Test stack. -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageVersion Include="xunit" Version="2.9.2" />

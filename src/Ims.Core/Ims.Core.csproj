@@ -16,6 +16,14 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+
+    <!-- PR-4.6 Excel export. Cross-platform, so Ims.Core stays portable (NFR-5). -->
+    <PackageReference Include="ClosedXML" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- ResultExporter.Quote is internal; RFC 4180 quoting deserves direct tests. -->
+    <InternalsVisibleTo Include="Ims.Core.Tests" />
   </ItemGroup>
 
 </Project>
