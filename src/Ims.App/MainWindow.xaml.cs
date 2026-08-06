@@ -5,11 +5,14 @@ using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Input;
 using System.Xml;
+using ICSharpCode.AvalonEdit.CodeCompletion;
 using ICSharpCode.AvalonEdit.Highlighting;
 using ICSharpCode.AvalonEdit.Highlighting.Xshd;
+using Ims.App.Editing;
 using Ims.App.ViewModels;
 using Ims.App.Views;
 using Ims.Core.Catalog;
+using Ims.Core.Completion;
 using Ims.Core.Connections;
 using Ims.Core.Data;
 using Ims.Core.Export;
@@ -49,12 +52,19 @@ public partial class MainWindow : Window
         "Save", nameof(SaveFileCommand), typeof(MainWindow),
         [new KeyGesture(Key.S, ModifierKeys.Control)]);
 
+    // PR-3.2, and PR-8.1: Ctrl+Space is the completion gesture in SSMS, so it is the
+    // one an SSMS user will try first.
+    public static readonly RoutedUICommand CompleteCommand = new(
+        "Complete", nameof(CompleteCommand), typeof(MainWindow),
+        [new KeyGesture(Key.Space, ModifierKeys.Control)]);
+
     private readonly MainViewModel _viewModel;
     private readonly ConnectionStore _connections;
     private readonly WindowsCredentialStore _credentials;
     private readonly CsdkDetectionResult _csdk;
 
     private EditorTabViewModel? _editorBoundTo;
+    private CompletionWindow? _completionWindow;
 
     public MainWindow(
         MainViewModel viewModel,
@@ -83,8 +93,11 @@ public partial class MainWindow : Window
         CommandBindings.Add(new CommandBinding(NewQueryCommand, OnNewQuery));
         CommandBindings.Add(new CommandBinding(OpenFileCommand, OnOpenFile));
         CommandBindings.Add(new CommandBinding(SaveFileCommand, OnSaveFile));
+        CommandBindings.Add(new CommandBinding(CompleteCommand, (_, _) => ShowCompletion()));
 
         LoadSyntaxHighlighting();
+
+        Editor.TextArea.TextEntered += OnEditorTextEntered;
 
         // PR-3.9: anything left by a run that did not close cleanly comes back.
         if (viewModel.RestoreAutosavedTabs() == 0)
@@ -125,6 +138,91 @@ public partial class MainWindow : Window
         catch (HighlightingDefinitionInvalidException)
         {
         }
+    }
+
+    // ---- Completion (PR-3.2) ----------------------------------------------------
+
+    /// <summary>
+    /// Decides whether a keystroke should bring the list up on its own.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two triggers, and deliberately not a third. A dot always opens the list,
+    /// because after <c>a.</c> there is nothing else the user could be about to type.
+    /// A letter opens it only where a table name belongs — straight after FROM, JOIN,
+    /// UPDATE or INTO — which is the moment the schema is worth most and the one place
+    /// a popup cannot interrupt an expression someone is midway through writing.
+    /// </para>
+    /// <para>
+    /// Everywhere else it waits for Ctrl+Space. A completion window that appears on
+    /// every letter is one people turn off, and PR-8.5's "the tool should never be
+    /// the reason you lose your train of thought" cuts against the caret most of all.
+    /// </para>
+    /// </remarks>
+    private void OnEditorTextEntered(object sender, TextCompositionEventArgs e)
+    {
+        if (_completionWindow is not null || e.Text.Length != 1)
+        {
+            return;
+        }
+
+        char typed = e.Text[0];
+
+        if (typed == '.')
+        {
+            ShowCompletion();
+            return;
+        }
+
+        if (!char.IsLetter(typed))
+        {
+            return;
+        }
+
+        CompletionContext context = CompletionContext.Analyse(Editor.Text, Editor.CaretOffset);
+
+        if (context.Target == CompletionTarget.ObjectName)
+        {
+            ShowCompletion(context);
+        }
+    }
+
+    private void ShowCompletion(CompletionContext? analysed = null)
+    {
+        if (!Editor.IsEnabled)
+        {
+            return;
+        }
+
+        CompletionContext context = analysed
+                                    ?? CompletionContext.Analyse(Editor.Text, Editor.CaretOffset);
+
+        IReadOnlyList<CompletionItem> items =
+            CompletionEngine.Suggest(context, _viewModel.CompletionCatalog);
+
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        var window = new CompletionWindow(Editor.TextArea)
+        {
+            // The word already typed stays selected, so accepting an item replaces it
+            // rather than doubling it.
+            StartOffset = context.ReplacementOffset,
+            EndOffset = Editor.CaretOffset,
+            CloseWhenCaretAtBeginning = true,
+        };
+
+        for (var i = 0; i < items.Count; i++)
+        {
+            window.CompletionList.CompletionData.Add(new SqlCompletionData(items[i], i));
+        }
+
+        window.Closed += (_, _) => _completionWindow = null;
+
+        _completionWindow = window;
+        window.Show();
     }
 
     /// <summary>

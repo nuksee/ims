@@ -56,6 +56,9 @@
         <MenuItem Header="Execute _selection" Command="{x:Static local:MainWindow.ExecuteSelectionCommand}" />
         <MenuItem Header="_Cancel" Command="{x:Static local:MainWindow.CancelExecutionCommand}" />
         <Separator />
+        <!-- Listed so the gesture is discoverable; PR-3.2 is not much use unfound. -->
+        <MenuItem Header="Complete _word" Command="{x:Static local:MainWindow.CompleteCommand}" />
+        <Separator />
         <MenuItem Header="Commit" Click="OnCommit" />
         <MenuItem Header="Roll back" Click="OnRollback" />
       </MenuItem>

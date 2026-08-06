@@ -4,6 +4,7 @@ using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Ims.Core.Catalog;
+using Ims.Core.Completion;
 using Ims.Core.Connections;
 using Ims.Core.Editing;
 using Ims.Core.Data;
@@ -80,6 +81,18 @@ public sealed partial class MainViewModel : ObservableObject
     /// <summary>The object browser for the current connection (Slice 2).</summary>
     [ObservableProperty]
     private ObjectTreeViewModel? _objectTree;
+
+    /// <summary>
+    /// What completion knows about the schema (PR-3.2).
+    /// </summary>
+    /// <remarks>
+    /// Never null, so the editor never has to ask whether there is a connection: with
+    /// none, completion still offers the Informix language, which is most of what
+    /// PR-8.3 is for and all of what someone drafting a script offline needs.
+    /// </remarks>
+    public ICatalogSnapshot CompletionCatalog { get; private set; } = EmptyCatalogSnapshot.Instance;
+
+    private CatalogCache? _catalogCache;
 
     public MainViewModel(
         ConnectionStore connections,
@@ -245,6 +258,8 @@ public sealed partial class MainViewModel : ObservableObject
         if (ObjectTree is { } existing)
         {
             ObjectTree = null;
+            CompletionCatalog = EmptyCatalogSnapshot.Instance;
+            _catalogCache = null;
             await existing.DisposeAsync().ConfigureAwait(true);
         }
 
@@ -254,7 +269,21 @@ public sealed partial class MainViewModel : ObservableObject
                 () => _sessionFactory.CreateCatalogReaderAsync(
                     descriptor, credentials, CancellationToken.None)).ConfigureAwait(true);
 
-            ObjectTree = new ObjectTreeViewModel(descriptor, catalog);
+            // One reader, one connection, shared by the tree and by completion. An
+            // Informix connection has one cursor, so the two would otherwise close
+            // each other's results — and a second session per instance is exactly the
+            // cost PR-6.4 asks IMS not to add.
+            var shared = new SerializedCatalogReader(catalog);
+
+            ObjectTree = new ObjectTreeViewModel(descriptor, shared);
+
+            _catalogCache = new CatalogCache(shared);
+            CompletionCatalog = _catalogCache;
+
+            // Warmed in the background: PR-3.2 needs the object names before the user
+            // types one, and nobody expands a tree first. Not awaited — the editor is
+            // usable, and completion improves when the answer lands.
+            _ = Task.Run(() => _catalogCache.WarmAsync(CancellationToken.None));
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -278,6 +307,8 @@ public sealed partial class MainViewModel : ObservableObject
         if (ObjectTree is { } tree && tree.Descriptor.Id == item.Descriptor.Id)
         {
             ObjectTree = null;
+            CompletionCatalog = EmptyCatalogSnapshot.Instance;
+            _catalogCache = null;
             await tree.DisposeAsync().ConfigureAwait(true);
         }
 
@@ -354,6 +385,8 @@ public sealed partial class MainViewModel : ObservableObject
         if (ObjectTree is { } tree)
         {
             ObjectTree = null;
+            CompletionCatalog = EmptyCatalogSnapshot.Instance;
+            _catalogCache = null;
             await tree.DisposeAsync().ConfigureAwait(true);
         }
 

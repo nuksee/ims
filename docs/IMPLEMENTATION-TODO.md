@@ -97,7 +97,7 @@ to be equally unmapped.
 ### 1b. SQL editor
 
 - [x] **M** Tabbed editor with Informix SQL + SPL highlighting (AvalonEdit; all three comment forms) — PR-3.1
-- [ ] **M** Context-aware completion — PR-3.2 **← the one Must not built.** Needs the object-metadata cache that Slice 2's tree also needs; building it once, in Slice 2, avoids doing it twice
+- [x] **M** Context-aware completion — PR-3.2. Built in Slice 2 as planned, over the shared `CatalogCache`. See "How completion decides what to offer" below
 - [x] **M** Execute whole script or selection only — PR-3.3
 - [x] **M** Multi-statement execution, each outcome in sequence, failing statement identified by index and offset — PR-3.4
 - [x] **M** Cancel: the token reaches the server via `OdbcCommand.Cancel`, not just the await — PR-3.5, RSK-6 *(unverified against a server)*
@@ -110,6 +110,41 @@ to be equally unmapped.
 - [x] **M** Local searchable query history with target, timing, row count, outcome — PR-3.12, DEC-8
 - [ ] **S** SQL formatter — PR-3.13 *(Slice 4)*
 - [ ] **C** Named snippets — PR-3.14
+
+#### How completion decides what to offer (PR-3.2)
+
+`CompletionContext.Analyse` reads the caret's surroundings; `CompletionEngine.Suggest`
+turns that into a list. Both are pure and synchronous, because this runs between one
+keystroke and the next and NFR-1 does not carve out an exception for typing.
+
+| Where the caret is | What it offers |
+|---|---|
+| After `FROM`, `JOIN`, `INTO`, `UPDATE` | Tables, views, synonyms, owners |
+| In `SELECT`, `WHERE`, `ON`, `SET`, `GROUP BY`, `HAVING`, `ORDER BY` | Columns of the tables in scope first, then aliases, functions, objects, keywords |
+| After `alias.` | That table's columns — an alias shadows a table of the same name |
+| After `owner.` | Everything that owner owns. Checked *before* the table match, or `informix.` would answer with a table named `informix` |
+| Anywhere else | The Informix language, then object names |
+
+Decisions worth keeping:
+
+- **Tables are collected from the whole statement, not just before the caret.**
+  `SELECT ▮ FROM customer` is the order people type in.
+- **Only the statement the caret is in.** A caret in the third statement of a script
+  is not offered the first statement's tables.
+- **Two auto-triggers, deliberately not three.** A dot always opens the list; a letter
+  opens it only where a table name belongs. Everywhere else waits for Ctrl+Space
+  (PR-8.1 — SSMS's gesture). A window that appears on every letter is one people turn off.
+- **The cache never blocks.** `ICatalogSnapshot` returns what is cached and
+  `RequestColumns` fetches the rest in the background, so the answer arrives for the
+  next keystroke rather than stalling this one.
+- **One reader, shared.** `SerializedCatalogReader` puts the tree and the completion
+  cache behind one semaphore on one connection. An Informix connection has one cursor,
+  so they would otherwise close each other's results — and a second session per
+  instance is the cost PR-6.4 asks IMS not to add.
+- **The detail text is the point** (PR-8.3). `MATCHES` says its wildcards are `*` and
+  `?`, not `%` and `_`; `LENGTH` says it ignores trailing blanks; `INTERVAL` says its
+  two classes do not mix. Entries with nothing Informix-specific to say carry no
+  detail, so the column stays worth reading.
 
 ### 1c. Result grid
 
