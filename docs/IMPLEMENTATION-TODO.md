@@ -33,6 +33,9 @@ must be usable alone, and this one isn't, so it should be measured in days not w
 | Can INTERVAL be read at all? | PR-4.5 | ⚠️ **Only as text.** See the constraint below |
 | Is SQLCODE retrievable? | PR-3.6 | ✅ Yes. ISAM reporting still unproven — `-206` has no ISAM error; needs a lock conflict or constraint violation |
 | Is `SECURITY=ssl` the keyword for encryption? | PR-1.10 | ❌ **No.** The driver ignores unknown keywords silently, so it would have faked encryption. Now throws instead |
+| How do DECIMAL, MONEY and LVARCHAR arrive? | PR-4.5 | ✅ **Cleanly**, measured 2026-08-06 — `DECIMAL`→`Decimal`, `MONEY`→`Decimal` (mapped `Money`), `LVARCHAR`→`String`. An earlier run reported all three unreadable; that was the INTERVAL poisoning below, reproduced by a probe that listed them after an INTERVAL column, not a property of these types |
+| Does the driver stream or buffer? | PR-4.2, RSK-6 | ✅ **Streams.** 20,000 join rows in 695 ms, first row after 44 ms, managed heap flat. Bounded run — says nothing about NFR-2's million |
+| Is an empty `Database=` accepted? | PR-1.1 | ⚠️ **By the driver, yes; by this server, no** — `-354`. Naming a database succeeds. See the note in `InformixOdbcConnectionString` |
 
 ### The INTERVAL constraint — measured, and it shapes the code
 
@@ -75,11 +78,13 @@ to be equally unmapped.
 >   `CommandTimeout = 0`. If `Cancel()` does not land, nothing stops it. **Do not run this
 >   against the production server**; it needs an instance of its own (RSK-5, PR-6.4).
 
-- [ ] Cancellation: does `OdbcCommand.Cancel()` leave the session usable? — PR-3.5. **Attempted
-  2026-08-06, inconclusive:** the bounded statement finished before the two-second cancel, so
-  `Cancel()` was never exercised. `systables` on this instance is small enough that a three-way
-  join is not slow. The cap is now a four-way join under `FIRST 5000000` — retry with
-  `--include-light-load`
+- [ ] Cancellation: does `OdbcCommand.Cancel()` leave the session usable? — PR-3.5. **Twice
+  inconclusive, 2026-08-06.** Both attempts finished before the two-second cancel, so `Cancel()`
+  was never exercised. Widening the join and raising the cap did not help, and the reason is
+  the probe's own shape: `COUNT(*)` over `FIRST n` lets the optimiser stop at *n* rows, so the
+  cap bounded the work rather than the result. Now `ORDER BY` over a three-way join, which
+  cannot be short-circuited — no row of a sorted result exists until every input row is read —
+  with `FIRST 200` and the 30s timeout still bounding it. Retry with `--include-light-load`
 - [x] Streaming: does the driver stream or buffer? — PR-4.2, RSK-6. **It streams.** 20,000 rows
   in 1090 ms, first row after 69 ms, managed heap flat. Bounded run, so this is the driver's
   behaviour at that size and says nothing about NFR-2's million rows

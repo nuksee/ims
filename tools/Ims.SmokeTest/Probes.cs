@@ -605,19 +605,23 @@ public static class Probes
         // cross join with no timeout: nothing stops it if the cancel does not land,
         // which is the whole hazard on a server shared with production.
         //
-        // The bounded form counts a capped subquery instead. Three tables rather than
-        // four, FIRST caps it server-side, and CommandTimeout is the backstop — so the
-        // worst case if Cancel() does nothing at all is a query that ends by itself in
-        // 30 seconds rather than one someone has to hunt down with onmode -z.
+        // The bounded form has to be slow on purpose while staying bounded, and
+        // CommandTimeout is its backstop — so the worst case if Cancel() does nothing
+        // at all is a statement that ends by itself in 30 seconds rather than one
+        // someone has to hunt down with onmode -z.
         bool bounded = !options.IncludeLoadProbes;
 
-        // Four tables in the bounded form too. Three was not slow enough against a
-        // small systables — the statement finished inside the two seconds before the
-        // cancel, so Cancel() went untested. The safety here is not the join width:
-        // it is FIRST capping the rows the server will produce and CommandTimeout
-        // ending it regardless, both of which still hold.
+        // Widening the join and raising the FIRST cap both failed to make this slow:
+        // COUNT(*) over FIRST n lets the optimiser stop at n rows, so the cap was
+        // bounding the work rather than the result, and the statement returned in
+        // under two seconds however large n got.
+        //
+        // ORDER BY is what cannot be short-circuited — no row of a sorted result is
+        // known until every input row has been read. The FIRST cap still bounds what
+        // comes back, and CommandTimeout still ends the whole thing, so the statement
+        // remains bounded in both directions while actually taking time to run.
         string sql = bounded
-            ? "SELECT COUNT(*) FROM (SELECT FIRST 5000000 a.tabid FROM systables a, systables b, systables c, systables d)"
+            ? "SELECT FIRST 200 a.tabname FROM systables a, systables b, systables c ORDER BY a.tabname, a.tabid"
             : "SELECT COUNT(*) FROM systables a, systables b, systables c, systables d";
 
         try
