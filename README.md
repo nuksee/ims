@@ -65,6 +65,24 @@ wrong and how to fix it — rather than failing later as an unexplained connecti
 written to `%LOCALAPPDATA%\IMS\logs`, with credentials and result data redacted at the logging
 provider boundary.
 
+## Packaging the pilot build
+
+```powershell
+dotnet publish src/Ims.App/Ims.App.csproj -c Release -p:PublishProfile=Pilot
+```
+
+Output lands in `publish/pilot/`. Give people a zip of that folder together with
+[docs/PILOT-INSTALL.md](docs/PILOT-INSTALL.md), which is written for them rather than for a
+developer.
+
+The build is **self-contained** (~165 MB, 289 files) and that is the point: NFR-7 asks that IMS
+install without local administrator rights, and installing the .NET desktop runtime on a managed
+workstation is an administrator action. Carrying the runtime makes it copy-and-run. It targets
+`win-x64` because a 64-bit process is the only kind that can load the 64-bit Informix ODBC driver.
+
+The CSDK is still **not** bundled (DEC-10), so the folder is useless on a machine without it —
+which IMS reports at startup as a prerequisite failure rather than a confusing connection error.
+
 ## The smoke test
 
 `tools/Ims.SmokeTest` is the Slice 0 provider spike. It answers, against a real instance, the
