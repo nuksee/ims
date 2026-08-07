@@ -1,0 +1,204 @@
+using System.Collections.ObjectModel;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Ims.Core.Catalog;
+using Ims.Core.Connections;
+
+namespace Ims.App.ViewModels;
+
+/// <summary>
+/// The object browser (PR-2.1 to PR-2.3, PR-2.7).
+/// </summary>
+/// <remarks>
+/// One tree per connected instance, rooted at the database the connection opened.
+/// DEC-7 designs for under ten instances, so there is no need for the tree to span
+/// them — each connection gets its own root and they sit side by side.
+/// </remarks>
+public sealed partial class ObjectTreeViewModel : ObservableObject, IAsyncDisposable
+{
+    private readonly ICatalogReader _catalog;
+
+    [ObservableProperty]
+    private string _filter = string.Empty;
+
+    [ObservableProperty]
+    private bool _includeSystemObjects;
+
+    [ObservableProperty]
+    private CatalogNodeViewModel? _selectedNode;
+
+    public ObjectTreeViewModel(ConnectionDescriptor descriptor, ICatalogReader catalog)
+    {
+        Descriptor = descriptor;
+        _catalog = catalog;
+
+        Roots = BuildFolders();
+        Detail = new TableDetailViewModel(catalog);
+    }
+
+    public ConnectionDescriptor Descriptor { get; }
+
+    /// <summary>The detail pane for whatever is selected (PR-2.4).</summary>
+    public TableDetailViewModel Detail { get; }
+
+    /// <summary>
+    /// True while the detail pane is on screen.
+    /// </summary>
+    /// <remarks>
+    /// Detail is only fetched when this is set. PR-6.4 keeps metadata queries
+    /// negligible on a production instance, and arrowing through 500 tables should
+    /// not issue 500 rounds of six catalogue queries because a hidden pane was
+    /// keeping up.
+    /// </remarks>
+    public bool IsDetailVisible { get; set; }
+
+    /// <summary>Loads detail for the current selection, if the pane is showing.</summary>
+    public Task RefreshDetailAsync(CancellationToken cancellationToken) =>
+        IsDetailVisible
+            ? Detail.ShowAsync(SelectedObject, cancellationToken)
+            : Task.CompletedTask;
+
+    /// <summary>
+    /// The folders, one per object kind (PR-2.1).
+    /// </summary>
+    /// <remarks>
+    /// Flat rather than nested under a database node: the connection already names
+    /// the database, and one less level to expand is one less click on the way to
+    /// the thing you wanted (PR-8.5).
+    /// </remarks>
+    public ObservableCollection<CatalogNodeViewModel> Roots { get; }
+
+    /// <summary>The catalogue query behind whatever is selected, for PR-8.2.</summary>
+    public string? SelectedQuery => SelectedNode?.SourceQuery;
+
+    /// <summary>The selected object, when the selection is one.</summary>
+    public SchemaObject? SelectedObject => (SelectedNode as SchemaObjectNodeViewModel)?.Object;
+
+    /// <summary>True when the selection is something you can actually select rows from.</summary>
+    /// <remarks>
+    /// Tables and views only. A synonym points at one, but resolving it is a
+    /// separate step and offering the action for something IMS cannot complete
+    /// would be worse than not offering it.
+    /// </remarks>
+    public bool CanSelectRows =>
+        SelectedObject?.Kind is SchemaObjectKind.Table or SchemaObjectKind.View;
+
+    public bool HasSelectedObject => SelectedObject is not null;
+
+    /// <summary>True when PR-2.6 can produce DDL for the selection.</summary>
+    public bool CanScriptSelection =>
+        SelectedObject is { } selected && ObjectScripter.CanScript(selected.Kind);
+
+    /// <summary>
+    /// Scripts the selection as DDL (PR-2.6).
+    /// </summary>
+    /// <remarks>
+    /// Runs off the dispatcher because it is several catalogue round trips — NFR-1 —
+    /// and returns rather than opening a tab itself, because where the script lands
+    /// is the shell's business, not the tree's.
+    /// </remarks>
+    public Task<ScriptResult> ScriptSelectionAsync(CancellationToken cancellationToken)
+    {
+        if (SelectedObject is not { } selected)
+        {
+            return Task.FromResult(new ScriptResult(string.Empty, "Nothing is selected."));
+        }
+
+        return Task.Run(
+            () => new ObjectScripter(_catalog).ScriptAsync(selected, cancellationToken),
+            cancellationToken);
+    }
+
+    private ObservableCollection<CatalogNodeViewModel> BuildFolders() =>
+    [
+        Folder("Tables", SchemaObjectKind.Table),
+        Folder("Views", SchemaObjectKind.View),
+        Folder("Synonyms", SchemaObjectKind.Synonym),
+        Folder("Sequences", SchemaObjectKind.Sequence),
+        Folder("Procedures", SchemaObjectKind.Procedure),
+        Folder("Functions", SchemaObjectKind.Function),
+        Folder("Indexes", SchemaObjectKind.Index),
+
+        // User-defined types are absent on purpose. The sysxtdtypes query was the
+        // one listing query that failed against 14.10, and the owner descoped it
+        // rather than spend time on it now. PR-2.1 names UDTs, so this leaves that
+        // requirement partly unmet — recorded in docs/IMPLEMENTATION-TODO.md rather
+        // than quietly dropped.
+    ];
+
+    private ObjectFolderNodeViewModel Folder(string name, SchemaObjectKind kind) =>
+        new(name,
+            kind,
+            _catalog,
+            () => string.IsNullOrWhiteSpace(Filter) ? null : Filter.Trim(),
+            () => IncludeSystemObjects);
+
+    /// <summary>Refreshes one subtree without rebuilding the whole tree (PR-2.7).</summary>
+    [RelayCommand]
+    public async Task RefreshNodeAsync(CatalogNodeViewModel? node)
+    {
+        CatalogNodeViewModel? target = node ?? SelectedNode;
+
+        if (target is null)
+        {
+            return;
+        }
+
+        target.Invalidate();
+
+        if (target.IsExpanded)
+        {
+            await target.EnsureLoadedAsync(CancellationToken.None).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>Re-reads everything that is currently open.</summary>
+    [RelayCommand]
+    public async Task RefreshAllAsync()
+    {
+        foreach (CatalogNodeViewModel root in Roots)
+        {
+            await RefreshNodeAsync(root).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>
+    /// Applies the name filter (PR-2.3).
+    /// </summary>
+    /// <remarks>
+    /// The filter goes into the catalogue query rather than being applied to a
+    /// loaded list, because with 20,000+ objects (NFR-2) the list is exactly what we
+    /// are trying not to fetch.
+    /// </remarks>
+    [RelayCommand]
+    public async Task ApplyFilterAsync()
+    {
+        foreach (CatalogNodeViewModel root in Roots.Where(r => r.IsExpanded))
+        {
+            root.Invalidate();
+            await root.EnsureLoadedAsync(CancellationToken.None).ConfigureAwait(true);
+        }
+    }
+
+    partial void OnSelectedNodeChanged(CatalogNodeViewModel? value)
+    {
+        OnPropertyChanged(nameof(SelectedQuery));
+        OnPropertyChanged(nameof(SelectedObject));
+        OnPropertyChanged(nameof(CanSelectRows));
+        OnPropertyChanged(nameof(HasSelectedObject));
+        OnPropertyChanged(nameof(CanScriptSelection));
+
+        _ = RefreshDetailAsync(CancellationToken.None);
+    }
+
+    partial void OnIncludeSystemObjectsChanged(bool value) =>
+        _ = ApplyFilterAsync();
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_catalog is IAsyncDisposable disposable)
+        {
+            await disposable.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+}

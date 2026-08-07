@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    The Slice 0 provider spike, in runnable form.
+
+    Not shipped with IMS. Its job is to answer, against a real non-production
+    instance, the questions that cannot be answered without one: cancellation
+    (PR-3.5), streaming (PR-4.2), type fidelity (PR-4.5), error detail
+    (PR-3.6), cross-version differences (RSK-9, if a second version is ever
+    available — 12.10 was descoped by DEC-5), and sysmaster readability
+    (Q-1, which gates Slice 3).
+  -->
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <RootNamespace>Ims.SmokeTest</RootNamespace>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.Data.Odbc" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Ims.Core\Ims.Core.csproj" />
+    <ProjectReference Include="..\..\src\Ims.Data.Informix\Ims.Data.Informix.csproj" />
+  </ItemGroup>
+
+</Project>

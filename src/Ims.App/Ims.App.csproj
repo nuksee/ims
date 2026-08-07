@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- WPF shell (DEC-3). Presentation only — no catalogue or provider logic. -->
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>Ims.App</RootNamespace>
+    <AssemblyName>Ims</AssemblyName>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+
+    <!-- NFR-7: installable and updatable without local administrator rights. -->
+    <SelfContained>false</SelfContained>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="AvalonEdit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- PR-3.1: Informix SQL and SPL highlighting, loaded by AvalonEdit at startup. -->
+    <EmbeddedResource Include="Resources\InformixSql.xshd" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Ims.Core\Ims.Core.csproj" />
+    <ProjectReference Include="..\Ims.Data.Informix\Ims.Data.Informix.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,8 @@
+# Console tooling only.
+
+[*.cs]
+# CA1849 (no synchronous calls in an async context) is an error everywhere else,
+# because NFR-1 and PR-8.5 make UI responsiveness a functional requirement. A
+# console tool has no UI thread to block, and rewriting every Console.WriteLine
+# as WriteLineAsync would obscure what the tool does without making it better.
+dotnet_diagnostic.CA1849.severity = suggestion
