@@ -83,6 +83,23 @@ public sealed class NullToVisibilityConverter : IValueConverter
 }
 
 /// <summary>
+/// Visible when the value is present — the inverse of
+/// <see cref="NullToVisibilityConverter"/>.
+/// </summary>
+/// <remarks>
+/// Both directions are needed and they are easy to confuse, so they are named for
+/// what makes them visible rather than for what they test.
+/// </remarks>
+public sealed class NotNullToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is null ? Visibility.Collapsed : Visibility.Visible;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>
 /// Visible once a count reaches the threshold given as the parameter.
 /// </summary>
 /// <remarks>

@@ -17,9 +17,22 @@ public sealed partial class EditorTabViewModel : ObservableObject, IAsyncDisposa
     private readonly QueryHistory _history;
     private readonly Func<StatementWarning, string, bool> _confirmDestructive;
     private CancellationTokenSource? _execution;
+    private CancelOutcome? _lastCancelOutcome;
 
     [ObservableProperty]
     private string _title = "Untitled";
+
+    /// <summary>
+    /// Explains a cancel that stopped IMS waiting without stopping the statement.
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="StatusText"/> because the status bar is transient and
+    /// this needs to stay put: a user whose query is still consuming server CPU has to
+    /// be able to read what to do about it after the moment has passed. Null whenever
+    /// there is nothing to say, so the banner can bind to its own presence.
+    /// </remarks>
+    [ObservableProperty]
+    private string? _cancelNotice;
 
     [ObservableProperty]
     private string _sql = string.Empty;
@@ -103,6 +116,9 @@ public sealed partial class EditorTabViewModel : ObservableObject, IAsyncDisposa
 
         await ClearResultsAsync().ConfigureAwait(true);
 
+        // A new run means the last one's warning is stale, whatever became of it.
+        CancelNotice = null;
+
         _execution = new CancellationTokenSource();
         IsExecuting = true;
         OnPropertyChanged(nameof(CanExecute));
@@ -163,7 +179,26 @@ public sealed partial class EditorTabViewModel : ObservableObject, IAsyncDisposa
         catch (OperationCanceledException)
         {
             stopwatch.Stop();
-            StatusText = $"Cancelled after {stopwatch.ElapsedMilliseconds:N0} ms";
+
+            // PR-3.5 is not met: measured against 14.10, the driver's cancel does not
+            // reach the server. Saying "Cancelled" would be a lie about someone's
+            // runaway query, so say what actually happened and name the tool that can
+            // finish the job — the same habit PR-8.2 applies to onstat.
+            StatusText = _lastCancelOutcome == CancelOutcome.StoppedWaitingOnly
+                ? $"Stopped waiting after {stopwatch.ElapsedMilliseconds:N0} ms — "
+                  + "the statement is still running on the server"
+                : $"Cancelled after {stopwatch.ElapsedMilliseconds:N0} ms";
+
+            if (_lastCancelOutcome == CancelOutcome.StoppedWaitingOnly)
+            {
+                CancelNotice =
+                    "The editor is free and the session is intact, but this Informix ODBC "
+                    + "driver does not pass a cancel to the server, so the statement keeps "
+                    + "running there until it finishes. To stop it, find the session with "
+                    + "'onstat -g ses' and end it with 'onmode -z <sid>'.";
+            }
+
+            _lastCancelOutcome = null;
         }
         catch (InformixException ex)
         {
@@ -190,10 +225,16 @@ public sealed partial class EditorTabViewModel : ObservableObject, IAsyncDisposa
             return;
         }
 
-        StatusText = "Cancelling…";
+        StatusText = "Asking the server to stop…";
 
         await _execution.CancelAsync().ConfigureAwait(true);
-        await Session.CancelAsync(CancellationToken.None).ConfigureAwait(true);
+
+        // Remembered rather than acted on here: the OperationCanceledException this
+        // provokes is caught in ExecuteAsync, and that is where the user is told. Two
+        // places writing StatusText would race.
+        _lastCancelOutcome = await Session
+            .CancelAsync(CancellationToken.None)
+            .ConfigureAwait(true);
     }
 
     public async Task ClearResultsAsync()

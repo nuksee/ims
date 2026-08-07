@@ -22,6 +22,7 @@
     <local:CountToVisibilityConverter x:Key="CountToVisibility" />
     <local:NotNullToBooleanConverter x:Key="NotNullToBool" />
     <local:NullToVisibilityConverter x:Key="NullToVisibility" />
+    <local:NotNullToVisibilityConverter x:Key="NotNullToVisibility" />
     <local:JoinListConverter x:Key="JoinList" />
     <local:EnvironmentBrushConverter x:Key="EnvironmentBrush" />
     <local:TransactionStateConverter x:Key="TransactionText" />
@@ -328,13 +329,45 @@
           </TabControl.ContentTemplate>
         </TabControl>
 
-        <avalonEdit:TextEditor x:Name="Editor" Grid.Row="1"
-                               FontFamily="Consolas" FontSize="13"
-                               ShowLineNumbers="True"
-                               WordWrap="False"
-                               HorizontalScrollBarVisibility="Auto"
-                               VerticalScrollBarVisibility="Auto"
-                               AutomationProperties.Name="SQL editor" />
+        <DockPanel Grid.Row="1">
+          <!--
+            Shown when a cancel freed the editor without stopping the statement, which
+            is what this ODBC driver actually does (PR-3.5, measured). It sits above
+            the editor rather than in the status bar because the status bar is
+            transient and this has to survive the moment: the user's query is still
+            consuming server CPU and the way to stop it is in this text.
+
+            Not colour-alone (NFR-8): the wording carries the meaning and the ⚠ gives
+            it a shape, so the amber is decoration rather than the signal.
+          -->
+          <Border DockPanel.Dock="Top"
+                  Background="#FFFFF4CE" BorderBrush="#FFE0C060" BorderThickness="0,0,0,1"
+                  Padding="8,5"
+                  Visibility="{Binding SelectedTab.CancelNotice,
+                               Converter={StaticResource NotNullToVisibility}}">
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Left" Text="⚠" FontSize="14" Margin="0,0,8,0"
+                         VerticalAlignment="Top" />
+              <Button DockPanel.Dock="Right" Content="✕" Padding="4,0" FontSize="10"
+                      BorderThickness="0" Background="Transparent"
+                      VerticalAlignment="Top"
+                      Click="OnDismissCancelNotice"
+                      ToolTip="Dismiss"
+                      AutomationProperties.Name="Dismiss the cancellation notice" />
+              <TextBlock Text="{Binding SelectedTab.CancelNotice}"
+                         TextWrapping="Wrap"
+                         AutomationProperties.Name="Cancellation notice" />
+            </DockPanel>
+          </Border>
+
+          <avalonEdit:TextEditor x:Name="Editor"
+                                 FontFamily="Consolas" FontSize="13"
+                                 ShowLineNumbers="True"
+                                 WordWrap="False"
+                                 HorizontalScrollBarVisibility="Auto"
+                                 VerticalScrollBarVisibility="Auto"
+                                 AutomationProperties.Name="SQL editor" />
+        </DockPanel>
 
         <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch"
                       Background="#FFE0E0E0" />

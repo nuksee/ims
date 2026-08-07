@@ -6,9 +6,15 @@
   a script routinely mixes DDL, DML and an SPL routine body, and the editor should
   not need to be told which it is looking at.
 
-  Informix's three comment forms are all here: -- to end of line, { } braces, and
-  the ANSI /* */. A tool that highlights only the ANSI form makes a brace comment
-  look like live code, which is worse than no highlighting at all.
+  Informix's three comment forms are all here: the double-hyphen to end of line,
+  { } braces, and the ANSI /* */. A tool that highlights only the ANSI form makes a
+  brace comment look like live code, which is worse than no highlighting at all.
+
+  Do not write the double-hyphen literally in this comment. XML forbids it inside a
+  comment, so the file stops being well-formed, HighlightingLoader throws, and
+  MainWindow.LoadSyntaxHighlighting swallows the exception by design — leaving an
+  editor with no highlighting at all and nothing to say why. That is exactly how
+  PR-3.1 came to be silently unmet.
 -->
 <SyntaxDefinition name="Informix SQL" extensions=".sql" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
 

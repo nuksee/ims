@@ -19,6 +19,7 @@ using Ims.Core.Export;
 using Ims.Core.Sql;
 using Ims.Data.Informix;
 using Ims.Data.Informix.Security;
+using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
 
 namespace Ims.App;
@@ -62,6 +63,7 @@ public partial class MainWindow : Window
     private readonly ConnectionStore _connections;
     private readonly WindowsCredentialStore _credentials;
     private readonly CsdkDetectionResult _csdk;
+    private readonly ILogger<MainWindow>? _logger;
 
     private EditorTabViewModel? _editorBoundTo;
     private CompletionWindow? _completionWindow;
@@ -70,8 +72,10 @@ public partial class MainWindow : Window
         MainViewModel viewModel,
         ConnectionStore connections,
         WindowsCredentialStore credentials,
-        CsdkDetectionResult csdk)
+        CsdkDetectionResult csdk,
+        ILogger<MainWindow>? logger = null)
     {
+        _logger = logger;
         _viewModel = viewModel;
         _connections = connections;
         _credentials = credentials;
@@ -114,8 +118,18 @@ public partial class MainWindow : Window
     /// Loads the Informix SQL and SPL definition (PR-3.1).
     /// </summary>
     /// <remarks>
+    /// <para>
     /// Failure here costs highlighting and nothing else, so it is caught: an editor
     /// with plain black text still works, and refusing to start would not.
+    /// </para>
+    /// <para>
+    /// But it is <em>logged</em>, which it was not. The definition contained a literal
+    /// double-hyphen inside its own XML comment while documenting Informix's comment
+    /// forms, so it was not well-formed; the loader threw, this method swallowed it,
+    /// and PR-3.1 was silently unmet for the life of the branch with the editor showing
+    /// plain black text and nothing anywhere saying why. A failure nobody can see is
+    /// not a graceful degradation, it is a bug with a hiding place.
+    /// </para>
     /// </remarks>
     private void LoadSyntaxHighlighting()
     {
@@ -126,17 +140,21 @@ public partial class MainWindow : Window
 
             if (stream is null)
             {
+                _logger?.LogWarning(
+                    "The syntax highlighting definition is missing from the assembly, so "
+                    + "the editor will show plain text (PR-3.1).");
                 return;
             }
 
             using XmlReader reader = XmlReader.Create(stream);
             Editor.SyntaxHighlighting = HighlightingLoader.Load(reader, HighlightingManager.Instance);
         }
-        catch (XmlException)
+        catch (Exception ex) when (ex is XmlException or HighlightingDefinitionInvalidException)
         {
-        }
-        catch (HighlightingDefinitionInvalidException)
-        {
+            _logger?.LogWarning(
+                "The syntax highlighting definition could not be loaded, so the editor "
+                + "will show plain text (PR-3.1): {Message}",
+                ex.Message);
         }
     }
 
@@ -562,6 +580,19 @@ public partial class MainWindow : Window
         if (_viewModel.SelectedTab is { } tab)
         {
             await tab.CancelAsync();
+        }
+    }
+
+    /// <summary>Dismisses the "still running on the server" banner.</summary>
+    /// <remarks>
+    /// Dismissable because it is advice, not an error: once the user has read it or
+    /// dealt with the session, leaving it on screen would train them to ignore it.
+    /// </remarks>
+    private void OnDismissCancelNotice(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedTab is { } tab)
+        {
+            tab.CancelNotice = null;
         }
     }
 

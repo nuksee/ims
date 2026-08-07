@@ -214,7 +214,7 @@ public sealed class InformixOdbcSession : IInformixSession
     /// succeed.
     /// </para>
     /// </remarks>
-    public Task CancelAsync(CancellationToken cancellationToken)
+    public Task<CancelOutcome> CancelAsync(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -222,10 +222,12 @@ public sealed class InformixOdbcSession : IInformixSession
 
         if (running is null)
         {
-            return Task.CompletedTask;
+            return Task.FromResult(CancelOutcome.NothingRunning);
         }
 
-        _logger.LogInformation("Cancelling the running statement on {Target}.", Descriptor.TargetLabel);
+        _logger.LogInformation(
+            "Asking the server to stop the running statement on {Target}.",
+            Descriptor.TargetLabel);
 
         try
         {
@@ -238,9 +240,15 @@ public sealed class InformixOdbcSession : IInformixSession
         catch (InvalidOperationException)
         {
             // The statement finished between the null check and the cancel.
+            return Task.FromResult(CancelOutcome.NothingRunning);
         }
 
-        return Task.CompletedTask;
+        // Cancel() returning is not evidence the statement stopped: measured, it
+        // returns promptly and the statement runs on regardless. Reporting anything
+        // stronger than "we stopped waiting" would be the inference PR-8.4 forbids.
+        // If a future driver honours the cancel, this is the line that changes — and
+        // the smoke test's --recheck-cancellation is what should prompt it.
+        return Task.FromResult(CancelOutcome.StoppedWaitingOnly);
     }
 
     /// <summary>Begins an explicit transaction, taking the session off autocommit (PR-3.7).</summary>

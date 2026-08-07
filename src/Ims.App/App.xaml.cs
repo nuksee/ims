@@ -103,7 +103,12 @@ public partial class App : Application
             autosave,
             _loggerFactory!.CreateLogger<MainViewModel>());
 
-        return new MainWindow(viewModel, connections, credentials, csdk);
+        return new MainWindow(
+            viewModel,
+            connections,
+            credentials,
+            csdk,
+            _loggerFactory!.CreateLogger<MainWindow>());
     }
 
     protected override void OnExit(ExitEventArgs e)

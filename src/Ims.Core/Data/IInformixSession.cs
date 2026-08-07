@@ -79,10 +79,21 @@ public interface IInformixSession : IAsyncDisposable
     Task<StatementOutcome> ExecuteAsync(string sql, CancellationToken cancellationToken);
 
     /// <summary>
-    /// Cancels the statement currently running, without dropping the session or the
-    /// application (PR-3.5).
+    /// Asks the server to stop the statement currently running, without dropping the
+    /// session or the application (PR-3.5).
     /// </summary>
-    Task CancelAsync(CancellationToken cancellationToken);
+    /// <returns>
+    /// What actually happened — which is not always what was asked for. See
+    /// <see cref="CancelOutcome"/>.
+    /// </returns>
+    /// <remarks>
+    /// Returning an outcome rather than <c>Task</c> is deliberate. Measured against
+    /// 14.10, the ODBC driver's cancel does not reach the server, and a void return
+    /// gave a caller no way to tell that from success — so the UI reported "Cancelled"
+    /// over a statement that was still running. A caller must be able to say something
+    /// true, so the provider has to admit what it managed.
+    /// </remarks>
+    Task<CancelOutcome> CancelAsync(CancellationToken cancellationToken);
 
     /// <summary>Commits the open transaction (PR-3.7).</summary>
     Task CommitAsync(CancellationToken cancellationToken);
