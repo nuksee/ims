@@ -275,6 +275,55 @@ public partial class MainWindow : Window
         }
 
         BindEditorToSelectedTab();
+        BringSelectedTabIntoView();
+    }
+
+    /// <summary>
+    /// Scrolls the tab strip so the selected tab is visible.
+    /// </summary>
+    /// <remarks>
+    /// The strip scrolls horizontally with its scrollbar hidden — a visible one was
+    /// laid out inside the scroller and left the headers looking cut off. So selecting
+    /// a tab that is off-screen has to bring it back itself, since there is no bar to
+    /// drag. Dispatched at Loaded priority because a freshly added tab has no
+    /// container to scroll to until layout has run.
+    /// </remarks>
+    private void BringSelectedTabIntoView()
+    {
+        Dispatcher.BeginInvoke(
+            () =>
+            {
+                if (TabHeaders.SelectedItem is null)
+                {
+                    return;
+                }
+
+                if (TabHeaders.ItemContainerGenerator.ContainerFromItem(TabHeaders.SelectedItem)
+                    is FrameworkElement container)
+                {
+                    container.BringIntoView();
+                }
+            },
+            System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    /// <summary>
+    /// Turns the wheel into horizontal scrolling over the tab strip.
+    /// </summary>
+    /// <remarks>
+    /// The strip is one horizontal row with no visible scrollbar, and a vertical
+    /// wheel gesture would otherwise do nothing at all there. Handled so the event
+    /// does not bubble on to scroll something else instead.
+    /// </remarks>
+    private void OnTabStripMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (sender is not ScrollViewer scroller)
+        {
+            return;
+        }
+
+        scroller.ScrollToHorizontalOffset(scroller.HorizontalOffset - e.Delta);
+        e.Handled = true;
     }
 
     private void OnResultSetChanged(object sender, SelectionChangedEventArgs e)

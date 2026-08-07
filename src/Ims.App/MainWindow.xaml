@@ -135,6 +135,7 @@
                  ItemsSource="{Binding Connections}"
                  SelectedItem="{Binding SelectedConnection}"
                  HorizontalContentAlignment="Stretch"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                  MouseDoubleClick="OnConnect"
                  AutomationProperties.Name="Saved connections">
           <ListBox.ItemTemplate>
@@ -149,7 +150,13 @@
                   <RowDefinition Height="Auto" />
                 </Grid.RowDefinitions>
 
-                <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding DisplayName}" FontWeight="SemiBold" />
+                <!-- Elided, not wrapped. The badge beside it is the one thing in this
+                     row that must never be cut off (PR-1.5), so a long connection
+                     name has to give way to it rather than push it off the edge. -->
+                <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding DisplayName}"
+                           FontWeight="SemiBold"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding DisplayName}" />
 
                 <!-- PR-1.5 and NFR-8: the word is the signal, the colour merely
                      reinforces it. This must be unmistakable to someone who cannot
@@ -162,8 +169,14 @@
                              AutomationProperties.Name="Environment" />
                 </Border>
 
+                <!-- A database and host name runs long, and as one unwrapped line it
+                     set the whole row's width — widening the item past the list's
+                     viewport and carrying the badge in column 1 off the right edge
+                     with it. Elided, so the row is only ever as wide as the list. -->
                 <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
-                           Text="{Binding Detail}" FontSize="11" Foreground="#FF5F6368" />
+                           Text="{Binding Detail}" FontSize="11" Foreground="#FF5F6368"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding Detail}" />
               </Grid>
             </DataTemplate>
           </ListBox.ItemTemplate>
@@ -304,17 +317,32 @@
           So: an ItemsPanel that does not wrap, inside a horizontal scroller. The strip
           keeps its height however many tabs are open, and the ones that do not fit are
           a scroll away rather than gone.
+
+          The scrollbar itself is hidden rather than Auto. A visible horizontal bar is
+          laid out *inside* the scroller, so it took ~17 of the strip's 26px the moment
+          the tabs overflowed — leaving the headers a few pixels tall and looking cut
+          off, which is the clipping this was supposed to have fixed. Scrolling is
+          driven by the mouse wheel over the strip and by keeping the selected tab in
+          view (see MainWindow.xaml.cs), so nothing is lost by not drawing the bar.
+
+          The height is 30 rather than the old 26. WPF promotes the selected tab a
+          couple of pixels past the others, so a header measures ~2px taller than the
+          plain ones and 26 cut its bottom edge. Dropping the height and letting the
+          row measure is not the answer — a ScrollViewer does not pass its content's
+          desired height up, so the strip collapsed to 20px instead.
         -->
         <TabControl x:Name="TabHeaders" Grid.Row="0"
                     ItemsSource="{Binding Tabs}"
                     SelectedItem="{Binding SelectedTab}"
                     SelectionChanged="OnTabChanged"
                     BorderThickness="0"
-                    Padding="0" Height="26">
+                    Padding="0" Height="30">
           <TabControl.Template>
             <ControlTemplate TargetType="TabControl">
-              <ScrollViewer HorizontalScrollBarVisibility="Auto"
+              <ScrollViewer x:Name="TabScroller"
+                            HorizontalScrollBarVisibility="Hidden"
                             VerticalScrollBarVisibility="Disabled"
+                            PreviewMouseWheel="OnTabStripMouseWheel"
                             Focusable="False">
                 <!-- ItemsPresenter, not a hardcoded TabPanel, so ItemsPanel below
                      actually takes effect. The content area is deliberately absent:
