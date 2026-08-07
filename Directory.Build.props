@@ -25,11 +25,64 @@
         <Product>Informix Management Studio</Product>
     <Version>0.1.0</Version>
     <NeutralLanguage>en</NeutralLanguage>
+
+    <!-- The StampGitCommit target below puts the abbreviated commit into
+         InformationalVersion. Left alone, the SDK also appends ".<full sha>" from
+         SourceRevisionId, so the string carries the same commit twice in two
+         lengths. One is enough, and the short one is the one a person can read
+         back over a desk. -->
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebugType>portable</DebugType>
     <Deterministic>true</Deterministic>
   </PropertyGroup>
+
+  <!--
+    Stamp the build with the commit it came from.
+
+    A pilot user reporting a bug can say which build they have, and the answer has
+    to survive a folder being copied around: a version alone cannot distinguish two
+    builds made from the same version number on different days, which is exactly
+    the situation a pilot creates.
+
+    Read from git at build time rather than written into a file, so it cannot go
+    stale. Failure is non-fatal — a source drop with no .git still builds, and says
+    "unknown" instead.
+  -->
+  <Target Name="StampGitCommit"
+          BeforeTargets="GetAssemblyVersion;GenerateAssemblyInfo"
+          Condition="'$(DesignTimeBuild)' != 'true'">
+
+    <Exec Command="git rev-parse --short=12 HEAD"
+          ConsoleToMSBuild="true"
+          StandardOutputImportance="low"
+          ContinueOnError="true"
+          IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitCommit" />
+      <Output TaskParameter="ExitCode" PropertyName="_GitCommitExit" />
+    </Exec>
+
+    <!-- A dirty tree matters more than usual here: it means the build does not
+         correspond to any commit, so the id alone would be a lie. -->
+    <Exec Command="git status --porcelain --untracked-files=no"
+          ConsoleToMSBuild="true"
+          StandardOutputImportance="low"
+          ContinueOnError="true"
+          IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_GitDirty" />
+    </Exec>
+
+    <PropertyGroup>
+      <_GitCommit Condition="'$(_GitCommitExit)' != '0'">unknown</_GitCommit>
+      <_GitCommit Condition="'$(_GitCommit)' == ''">unknown</_GitCommit>
+      <_GitSuffix Condition="'$(_GitDirty)' != ''">+modified</_GitSuffix>
+
+      <!-- InformationalVersion is the one field allowed arbitrary text; the numeric
+           AssemblyVersion cannot carry a hash. -->
+      <InformationalVersion>$(Version)+$(_GitCommit)$(_GitSuffix)</InformationalVersion>
+    </PropertyGroup>
+  </Target>
 
 </Project>

@@ -940,17 +940,7 @@ public partial class MainWindow : Window
         new HistoryWindow(_viewModel) { Owner = this }.Show();
 
     private void OnAbout(object sender, RoutedEventArgs e) =>
-        MessageBox.Show(
-            this,
-            "Informix Management Studio\n\n"
-            + $"Client SDK : {_csdk.Version ?? "(unknown)"}\n"
-            + $"INFORMIXDIR: {_csdk.InformixDir}\n"
-            + $"ODBC driver: {_csdk.OdbcDriverName}\n\n"
-            + "IMS sends no statement you did not type, makes no administrative change "
-            + "of its own, and emits no telemetry.",
-            "About IMS",
-            MessageBoxButton.OK,
-            MessageBoxImage.Information);
+        new AboutWindow(_csdk) { Owner = this }.ShowDialog();
 
     // ---- Shutdown --------------------------------------------------------------
 

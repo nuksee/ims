@@ -1,0 +1,96 @@
+<Window x:Class="Ims.App.Views.AboutWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="About IMS"
+        Icon="/Resources/ims.ico"
+        SizeToContent="Height" Width="460"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False">
+
+  <!--
+    A window rather than the MessageBox this used to be, for one reason: the
+    version and commit are here to be put into a bug report, and MessageBox text
+    cannot be selected. Every value is in a read-only TextBox, and there is a
+    button that copies the lot.
+  -->
+
+  <StackPanel Margin="16">
+    <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+      <Image Source="/Resources/ims.ico" Width="48" Height="48"
+             VerticalAlignment="Top" Margin="0,0,12,0" />
+      <StackPanel VerticalAlignment="Center">
+        <TextBlock Text="Informix Management Studio" FontSize="16" FontWeight="SemiBold" />
+        <TextBlock x:Name="VersionLine" Foreground="#FF5F6368" Margin="0,2,0,0" />
+      </StackPanel>
+    </StackPanel>
+
+    <!-- Selectable, because these are the lines someone pastes into a report. -->
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="Auto" />
+        <ColumnDefinition Width="*" />
+      </Grid.ColumnDefinitions>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+        <RowDefinition Height="Auto" />
+      </Grid.RowDefinitions>
+
+      <TextBlock Grid.Row="0" Grid.Column="0" Text="Version" Margin="0,0,10,4"
+                 Foreground="#FF5F6368" />
+      <TextBox   Grid.Row="0" Grid.Column="1" x:Name="VersionValue" Margin="0,0,0,4"
+                 IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                 FontFamily="Consolas" Padding="0"
+                 AutomationProperties.Name="Version" />
+
+      <TextBlock Grid.Row="1" Grid.Column="0" Text="Commit" Margin="0,0,10,4"
+                 Foreground="#FF5F6368" />
+      <TextBox   Grid.Row="1" Grid.Column="1" x:Name="CommitValue" Margin="0,0,0,4"
+                 IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                 FontFamily="Consolas" Padding="0"
+                 AutomationProperties.Name="Commit" />
+
+      <TextBlock Grid.Row="2" Grid.Column="0" Text="Client SDK" Margin="0,0,10,4"
+                 Foreground="#FF5F6368" />
+      <TextBox   Grid.Row="2" Grid.Column="1" x:Name="CsdkValue" Margin="0,0,0,4"
+                 IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                 FontFamily="Consolas" Padding="0"
+                 AutomationProperties.Name="Client SDK version" />
+
+      <TextBlock Grid.Row="3" Grid.Column="0" Text="INFORMIXDIR" Margin="0,0,10,4"
+                 Foreground="#FF5F6368" />
+      <TextBox   Grid.Row="3" Grid.Column="1" x:Name="InformixDirValue" Margin="0,0,0,4"
+                 IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                 FontFamily="Consolas" Padding="0" TextWrapping="Wrap"
+                 AutomationProperties.Name="INFORMIXDIR" />
+
+      <TextBlock Grid.Row="4" Grid.Column="0" Text="ODBC driver" Margin="0,0,10,0"
+                 Foreground="#FF5F6368" />
+      <TextBox   Grid.Row="4" Grid.Column="1" x:Name="OdbcDriverValue"
+                 IsReadOnly="True" BorderThickness="0" Background="Transparent"
+                 FontFamily="Consolas" Padding="0" TextWrapping="Wrap"
+                 AutomationProperties.Name="ODBC driver" />
+    </Grid>
+
+    <!-- Shown only when the build came from a tree with uncommitted changes, which
+         means the commit above does not describe what is running. -->
+    <Border x:Name="ModifiedNotice" Visibility="Collapsed"
+            Background="#FFFFF4CE" BorderBrush="#FFE0C060" BorderThickness="1"
+            Padding="8,5" Margin="0,12,0,0">
+      <TextBlock TextWrapping="Wrap" FontSize="11"
+                 Text="⚠ Built from a working tree with uncommitted changes, so the commit above does not describe this build exactly." />
+    </Border>
+
+    <TextBlock TextWrapping="Wrap" Foreground="#FF5F6368" FontSize="11" Margin="0,12,0,0"
+               Text="IMS sends no statement you did not type, makes no administrative change of its own, and emits no telemetry." />
+
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+      <Button Content="_Copy details" MinWidth="110" Padding="10,4" Margin="0,0,8,0"
+              Click="OnCopy" />
+      <Button Content="_Close" MinWidth="90" Padding="10,4" IsDefault="True" IsCancel="True" />
+    </StackPanel>
+  </StackPanel>
+</Window>
