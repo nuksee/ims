@@ -5,6 +5,7 @@
         xmlns:vm="clr-namespace:Ims.App.ViewModels"
         xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
         Title="Informix Management Studio"
+        Icon="Resources/ims.ico"
         Height="820" Width="1320"
         WindowStartupLocation="CenterScreen"
         Closing="OnClosing">

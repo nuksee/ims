@@ -11,6 +11,14 @@
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
 
     <!--
+      The icon Explorer, the taskbar and Alt+Tab use. Generated from
+      Resources\ims.png by tools/make-ico.ps1 and committed, so a build needs no
+      image tooling. Nine sizes from 16 to 256: Windows picks a different one per
+      context, and a single-size icon is a blur everywhere else.
+    -->
+    <ApplicationIcon>Resources\ims.ico</ApplicationIcon>
+
+    <!--
       Framework-dependent for local development, so a build is fast and does not
       copy a runtime into bin on every compile.
 
@@ -40,6 +48,16 @@
   <ItemGroup>
     <!-- PR-3.1: Informix SQL and SPL highlighting, loaded by AvalonEdit at startup. -->
     <EmbeddedResource Include="Resources\InformixSql.xshd" />
+
+    <!--
+      ApplicationIcon above sets the icon on the .exe; it does not reach the window
+      chrome, which WPF takes from Window.Icon. Same file, included as a WPF Resource
+      so the XAML can pack-URI it.
+    -->
+    <Resource Include="Resources\ims.ico" />
+
+    <!-- Kept alongside as the source of truth the .ico is generated from. -->
+    <None Include="Resources\ims.png" />
   </ItemGroup>
 
   <ItemGroup>
