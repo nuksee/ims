@@ -293,12 +293,42 @@
 
         <!-- Tab headers only. One editor control is shared between tabs, which keeps
              a single AvalonEdit instance and its undo stack predictable. -->
+        <!--
+          One row that scrolls, rather than WPF's default of wrapping onto extra rows.
+          TabPanel wraps once the headers no longer fit, but this strip is a fixed 26px
+          — so the second row was drawn outside it and those tabs became unreachable.
+          Growing instead would be worse: the strip would eat the editor a row at a
+          time, and tabs would jump between rows as the selected one is promoted.
+
+          So: an ItemsPanel that does not wrap, inside a horizontal scroller. The strip
+          keeps its height however many tabs are open, and the ones that do not fit are
+          a scroll away rather than gone.
+        -->
         <TabControl x:Name="TabHeaders" Grid.Row="0"
                     ItemsSource="{Binding Tabs}"
                     SelectedItem="{Binding SelectedTab}"
                     SelectionChanged="OnTabChanged"
                     BorderThickness="0"
                     Padding="0" Height="26">
+          <TabControl.Template>
+            <ControlTemplate TargetType="TabControl">
+              <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                            VerticalScrollBarVisibility="Disabled"
+                            Focusable="False">
+                <!-- ItemsPresenter, not a hardcoded TabPanel, so ItemsPanel below
+                     actually takes effect. The content area is deliberately absent:
+                     one shared AvalonEdit lives outside this control, and the
+                     ContentTemplate is empty for the same reason. -->
+                <ItemsPresenter />
+              </ScrollViewer>
+            </ControlTemplate>
+          </TabControl.Template>
+
+          <TabControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Orientation="Horizontal" />
+            </ItemsPanelTemplate>
+          </TabControl.ItemsPanel>
           <!--
             Middle-click closes a tab. Hooked on the container rather than on the
             item template so the whole header is the target: aiming at the label is
@@ -315,7 +345,12 @@
           <TabControl.ItemTemplate>
             <DataTemplate>
               <StackPanel Orientation="Horizontal">
-                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+                <!-- Capped and elided: a tab named after a long file would otherwise
+                     push every other tab off the strip on its own. The full title is
+                     on the tooltip, so nothing is lost. -->
+                <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
+                           MaxWidth="180" TextTrimming="CharacterEllipsis"
+                           ToolTip="{Binding Title}" />
                 <Button Content="✕" Margin="6,0,0,0" Padding="3,0" FontSize="10"
                         BorderThickness="0" Background="Transparent"
                         Click="OnCloseTab"

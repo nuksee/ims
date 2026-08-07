@@ -149,4 +149,83 @@ public class EditorAutosaveTests : IDisposable
 
         Directory.GetFiles(_directory, "*.tmp").Should().BeEmpty();
     }
+
+    /// <summary>
+    /// One tab is one file, however often it is renamed.
+    /// </summary>
+    /// <remarks>
+    /// The caller used to key on the tab title, which changes when a tab is saved to a
+    /// file or reopened. Every rename made the same tab look new, so it left its old
+    /// file behind — and the orphan came back as an extra tab on the next launch, which
+    /// renamed it again. The autosave directory grew by a generation per run.
+    /// </remarks>
+    [Fact]
+    public void Renaming_a_tab_does_not_leave_a_second_file_behind()
+    {
+        var autosave = new EditorAutosave(_directory);
+
+        autosave.Save("tab-1", "Query 4", "SELECT 1 FROM systables", filePath: null);
+        autosave.Save("tab-1", "Query 4 (recovered)", "SELECT 1 FROM systables", filePath: null);
+        autosave.Save("tab-1", "bankrcashtranb", "SELECT 1 FROM systables", filePath: null);
+
+        Directory.GetFiles(_directory, "*.json").Should().ContainSingle(
+            "the id identifies the tab; the title is only what it happens to be called");
+
+        autosave.Recover().Should().ContainSingle()
+            .Which.Title.Should().Be("bankrcashtranb");
+    }
+
+    /// <summary>
+    /// Reopening a recovered tab under its own id replaces it rather than doubling it.
+    /// </summary>
+    [Fact]
+    public void Recovering_and_resaving_the_same_tab_keeps_one_file()
+    {
+        var first = new EditorAutosave(_directory);
+        first.Save("tab-1", "Query 1", "SELECT 1 FROM systables", filePath: null);
+
+        // What a restart does: recover, then save again under the recovered id.
+        var afterRestart = new EditorAutosave(_directory);
+        AutosavedTab recovered = afterRestart.Recover().Single();
+        afterRestart.Save(recovered.Id, recovered.Title, recovered.Sql, recovered.FilePath);
+
+        Directory.GetFiles(_directory, "*.json").Should().ContainSingle();
+        afterRestart.Recover().Should().ContainSingle();
+    }
+
+    /// <summary>
+    /// An empty tab is not work, and must not come back as a recovered one.
+    /// </summary>
+    /// <remarks>
+    /// Half of why IMS appeared to recover work after a session in which nothing had
+    /// been typed: a blank Query 1 was saved at shutdown and reopened at startup.
+    /// Recover() already filters blanks; this pins that, and the caller no longer
+    /// writes them.
+    /// </remarks>
+    [Fact]
+    public void An_empty_tab_is_not_recovered()
+    {
+        var autosave = new EditorAutosave(_directory);
+        autosave.Save("tab-1", "Query 1", string.Empty, filePath: null);
+        autosave.Save("tab-2", "Query 2", "   \r\n  ", filePath: null);
+        autosave.Save("tab-3", "Query 3", "SELECT 1 FROM systables", filePath: null);
+
+        autosave.Recover().Should().ContainSingle()
+            .Which.Sql.Should().Be("SELECT 1 FROM systables");
+    }
+
+    /// <summary>
+    /// Emptying a tab removes its file, rather than leaving the last version to return.
+    /// </summary>
+    [Fact]
+    public void Discarding_an_emptied_tab_removes_it()
+    {
+        var autosave = new EditorAutosave(_directory);
+        autosave.Save("tab-1", "Query 1", "SELECT 1 FROM systables", filePath: null);
+
+        autosave.Discard("tab-1");
+
+        autosave.Recover().Should().BeEmpty();
+        Directory.GetFiles(_directory, "*.json").Should().BeEmpty();
+    }
 }

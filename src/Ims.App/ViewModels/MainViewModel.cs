@@ -374,20 +374,36 @@ public sealed partial class MainViewModel : ObservableObject
         }
     }
 
-    /// <summary>Restores anything left behind by a run that did not close cleanly (PR-3.9).</summary>
+    /// <summary>Reopens the tabs from the previous session (PR-3.9).</summary>
+    /// <remarks>
+    /// <para>
+    /// The restored tab keeps the saved <see cref="AutosavedTab.Id"/> rather than
+    /// minting a new one, so it continues to own its file instead of orphaning it and
+    /// writing a second. Getting that wrong is what filled the autosave directory with
+    /// one extra copy of every tab per launch.
+    /// </para>
+    /// <para>
+    /// The title is restored verbatim too. Appending " (recovered)" renamed the tab on
+    /// every run, so a tab reopened six times was titled "(recovered) (recovered)…" and
+    /// — because the key was derived from the title — left six files behind. The status
+    /// line says what happened; the tab does not need to carry it forever.
+    /// </para>
+    /// </remarks>
     public int RestoreAutosavedTabs()
     {
         IReadOnlyList<AutosavedTab> recovered = _autosave.Recover();
 
         foreach (AutosavedTab saved in recovered)
         {
-            NewTab(session: null, sql: saved.Sql, title: saved.Title + " (recovered)");
+            EditorTabViewModel tab = NewTab(session: null, sql: saved.Sql, title: saved.Title);
+            tab.AdoptAutosaveId(saved.Id);
+            tab.FilePath = saved.FilePath;
         }
 
         if (recovered.Count > 0)
         {
-            StatusText = $"Recovered {recovered.Count} unsaved tab(s) from the previous session.";
-            _logger.LogInformation("Recovered {Count} autosaved tabs.", recovered.Count);
+            StatusText = $"Reopened {recovered.Count} tab(s) from the previous session.";
+            _logger.LogInformation("Reopened {Count} autosaved tabs.", recovered.Count);
         }
 
         return recovered.Count;
@@ -410,7 +426,21 @@ public sealed partial class MainViewModel : ObservableObject
         {
             // A clean exit still autosaves: reopening where you left off is the
             // behaviour people expect, and PR-3.9 costs nothing extra here.
-            _autosave.Save(TabKey(tab), tab.Title, tab.Sql, tab.FilePath);
+            //
+            // An empty tab is not worth reopening, though, and saving it was half of
+            // why IMS appeared to "recover" work after a session where nothing had
+            // been typed — a blank Query 1 came back as a recovered tab, every time.
+            // Recover() already skips blank files on the way in; this stops writing
+            // them on the way out, so they do not accumulate either.
+            if (string.IsNullOrWhiteSpace(tab.Sql))
+            {
+                _autosave.Discard(TabKey(tab));
+            }
+            else
+            {
+                _autosave.Save(TabKey(tab), tab.Title, tab.Sql, tab.FilePath);
+            }
+
             await tab.DisposeAsync().ConfigureAwait(true);
         }
 
@@ -428,16 +458,25 @@ public sealed partial class MainViewModel : ObservableObject
     {
         foreach (EditorTabViewModel tab in Tabs.Where(t => t.IsDirty))
         {
-            _autosave.Save(TabKey(tab), tab.Title, tab.Sql, tab.FilePath);
+            // Emptying a tab is an edit like any other, so it has to remove the file
+            // rather than leave the last non-empty version behind to be reopened.
+            if (string.IsNullOrWhiteSpace(tab.Sql))
+            {
+                _autosave.Discard(TabKey(tab));
+            }
+            else
+            {
+                _autosave.Save(TabKey(tab), tab.Title, tab.Sql, tab.FilePath);
+            }
+
             tab.IsDirty = false;
         }
     }
 
-    // Fully qualified: in a WPF file, unqualified Path is System.Windows.Shapes.Path.
-    private static string TabKey(EditorTabViewModel tab) =>
-        tab.FilePath is null
-            ? tab.Title
-            : System.IO.Path.GetFileNameWithoutExtension(tab.FilePath) + "-" + tab.Title;
+    // The tab's own identity, not anything derived from its title or file name. Both
+    // of those change while the tab lives, and a key that changes makes the autosave
+    // store treat one tab as several.
+    private static string TabKey(EditorTabViewModel tab) => tab.AutosaveId;
 
     private void OnSessionStateChanged(object? sender, SessionStateChangedEventArgs e)
     {

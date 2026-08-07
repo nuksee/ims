@@ -19,6 +19,34 @@ public sealed partial class EditorTabViewModel : ObservableObject, IAsyncDisposa
     private CancellationTokenSource? _execution;
     private CancelOutcome? _lastCancelOutcome;
 
+    /// <summary>
+    /// Identity for the autosave store — stable for the life of the tab.
+    /// </summary>
+    /// <remarks>
+    /// The autosave key used to be derived from <see cref="Title"/>, which changes:
+    /// saving to a file renames the tab, and so did the " (recovered)" suffix. Each
+    /// rename made the tab look new to <c>EditorAutosave</c>, so it wrote a second
+    /// file and orphaned the first. Recovering then re-suffixed the title, which
+    /// produced another key on the next run, and the autosave directory filled with
+    /// <c>Query_4__recovered___recovered_.json</c> and friends — one generation per
+    /// launch, each reappearing as its own tab.
+    /// </remarks>
+    public string AutosaveId { get; private set; } = Guid.NewGuid().ToString("n");
+
+    /// <summary>
+    /// Takes over a previous run's autosave identity, when reopening its tab.
+    /// </summary>
+    /// <remarks>
+    /// Only for <see cref="MainViewModel.RestoreAutosavedTabs"/>. A restored tab has to
+    /// continue owning the file it came from; minting a fresh id would leave the old
+    /// file behind to be recovered again on the next launch, and again after that.
+    /// </remarks>
+    public void AdoptAutosaveId(string id)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(id);
+        AutosaveId = id;
+    }
+
     [ObservableProperty]
     private string _title = "Untitled";
 
