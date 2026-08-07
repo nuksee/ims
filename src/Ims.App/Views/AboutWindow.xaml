@@ -17,7 +17,21 @@
 
   <StackPanel Margin="16">
     <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-      <Image Source="/Resources/ims.ico" Width="48" Height="48"
+      <!--
+        A PNG, not the .ico. Pointed at an .ico, WPF's BitmapImage decodes the 16px
+        frame and stretches it to fill the box — a 3x upscale of the smallest image
+        in the file, which is exactly as blurry as it sounds. A PNG has one frame
+        and no such choice to get wrong, and at 512px it downsamples cleanly.
+
+        ims-icon.png rather than the ims.png artwork: it carries the same crop as
+        the icon frames, so the drawing is the same size here as in the title bar.
+        The raw artwork spends half its width on transparent margin.
+
+        The .ico remains right for Window.Icon and the taskbar, where the frame is
+        chosen by the shell rather than by layout size.
+      -->
+      <Image Source="/Resources/ims-icon.png" Width="48" Height="48"
+             RenderOptions.BitmapScalingMode="HighQuality"
              VerticalAlignment="Top" Margin="0,0,12,0" />
       <StackPanel VerticalAlignment="Center">
         <TextBlock Text="Informix Management Studio" FontSize="16" FontWeight="SemiBold" />

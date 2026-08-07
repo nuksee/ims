@@ -56,7 +56,15 @@
     -->
     <Resource Include="Resources\ims.ico" />
 
-    <!-- Kept alongside as the source of truth the .ico is generated from. -->
+    <!--
+      The same artwork as a single cropped PNG, for drawing inside the app at a size
+      the layout picks. WPF resolves an .ico to its 16px frame and upscales, so an
+      Image bound to the .ico is blurry at any size above 16.
+    -->
+    <Resource Include="Resources\ims-icon.png" />
+
+    <!-- The original artwork. Not compiled in: it is what tools/make-ico.ps1 reads
+         to regenerate the two above. -->
     <None Include="Resources\ims.png" />
   </ItemGroup>
 

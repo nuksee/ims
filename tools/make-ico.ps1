@@ -20,6 +20,10 @@ param(
     [Parameter(Mandatory)] [string] $Source,
     [Parameter(Mandatory)] [string] $Destination,
 
+    # Optional cropped PNG, for drawing the icon inside the app at a size the
+    # layout picks. See the note where it is written.
+    [string] $PngDestination,
+
     # Fraction of the frame the artwork should span. Windows' own icons sit at
     # roughly 90% for a squarish glyph; leaving a little room stops the shape
     # touching the edge, which reads as clipped.
@@ -112,6 +116,41 @@ foreach ($size in $sizes) {
     $frames += , @{ Size = $size; Bytes = $ms.ToArray() }
     $ms.Dispose()
     $bmp.Dispose()
+}
+
+# --- A cropped PNG for in-window use ----------------------------------------
+#
+# WPF's BitmapImage, handed an .ico, decodes the 16px frame and stretches it to
+# whatever size the layout asked for — so the About window's 48px image was a 3x
+# upscale of the smallest thing in the file. A PNG has one frame and no such
+# choice to get wrong, and at 512px it downsamples cleanly at any DPI.
+#
+# Same crop and the same fill as the icon frames, so the artwork is the size in
+# both places.
+if ($PngDestination) {
+    $pngSize = 512
+    $pngBmp = [System.Drawing.Bitmap]::new($pngSize, $pngSize, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $pg = [System.Drawing.Graphics]::FromImage($pngBmp)
+    $pg.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $pg.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $pg.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+    $pg.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+    $pg.Clear([System.Drawing.Color]::Transparent)
+
+    $pngDrawn = [int][Math]::Round($pngSize * $Fill)
+    $pngInset = ($pngSize - $pngDrawn) / 2.0
+
+    $pg.DrawImage(
+        $src,
+        (New-Object System.Drawing.RectangleF ([float]$pngInset), ([float]$pngInset), ([float]$pngDrawn), ([float]$pngDrawn)),
+        $crop,
+        [System.Drawing.GraphicsUnit]::Pixel)
+
+    $pg.Dispose()
+    $pngBmp.Save($PngDestination, [System.Drawing.Imaging.ImageFormat]::Png)
+    $pngBmp.Dispose()
+
+    "wrote {0} ({1:N0} bytes, {2}x{2})" -f $PngDestination, (Get-Item $PngDestination).Length, $pngSize
 }
 
 $src.Dispose()
