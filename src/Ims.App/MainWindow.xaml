@@ -128,11 +128,6 @@
                  Margin="0,0,0,6" Padding="4,3"
                  AutomationProperties.Name="Search connections" />
 
-        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="0,6,0,0">
-          <Button Content="C_onnect" Padding="8,3" Margin="0,0,6,0" Click="OnConnect" />
-          <Button Content="_Disconnect" Padding="8,3" Click="OnDisconnect" />
-        </StackPanel>
-
         <ListBox x:Name="ConnectionList"
                  ItemsSource="{Binding Connections}"
                  SelectedItem="{Binding SelectedConnection}"
@@ -140,6 +135,30 @@
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                  MouseDoubleClick="OnConnect"
                  AutomationProperties.Name="Saved connections">
+          <!-- Right-clicking a row selects it first, so the menu always acts on
+               the row under the cursor rather than the previous selection. -->
+          <ListBox.ItemContainerStyle>
+            <Style TargetType="ListBoxItem">
+              <EventSetter Event="PreviewMouseRightButtonDown" Handler="OnConnectionRightClick" />
+              <Setter Property="ContextMenu">
+                <Setter.Value>
+                  <ContextMenu>
+                    <MenuItem Header="C_onnect" Click="OnConnect"
+                              Visibility="{Binding IsConnected,
+                                           Converter={StaticResource BoolToVisibility},
+                                           ConverterParameter=Invert}" />
+                    <MenuItem Header="_Disconnect" Click="OnDisconnect"
+                              Visibility="{Binding IsConnected,
+                                           Converter={StaticResource BoolToVisibility}}" />
+                    <Separator />
+                    <MenuItem Header="_Edit…" Click="OnEditConnection" />
+                    <MenuItem Header="_Remove" Click="OnRemoveConnection" />
+                  </ContextMenu>
+                </Setter.Value>
+              </Setter>
+            </Style>
+          </ListBox.ItemContainerStyle>
+
           <ListBox.ItemTemplate>
             <DataTemplate>
               <Grid Margin="2,4">

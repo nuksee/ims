@@ -673,6 +673,17 @@ public partial class MainWindow : Window
 
     // ---- Connection menu -------------------------------------------------------
 
+    // WPF opens a ListBoxItem's context menu without selecting the row, which
+    // would leave the menu acting on whatever was selected before. Select first.
+    private void OnConnectionRightClick(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is ListBoxItem item)
+        {
+            item.IsSelected = true;
+            item.Focus();
+        }
+    }
+
     private async void OnConnect(object sender, RoutedEventArgs e)
     {
         await _viewModel.ConnectAsync(_viewModel.SelectedConnection);
