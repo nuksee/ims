@@ -59,6 +59,13 @@ public partial class MainWindow : Window
         "Complete", nameof(CompleteCommand), typeof(MainWindow),
         [new KeyGesture(Key.Space, ModifierKeys.Control)]);
 
+    // F1 is where every Windows user reaches for help, including with focus in the
+    // editor — which is why this is a routed command like the rest rather than a
+    // KeyBinding the editor would swallow.
+    public static readonly RoutedUICommand HelpContentsCommand = new(
+        "Help", nameof(HelpContentsCommand), typeof(MainWindow),
+        [new KeyGesture(Key.F1)]);
+
     private readonly MainViewModel _viewModel;
     private readonly ConnectionStore _connections;
     private readonly WindowsCredentialStore _credentials;
@@ -98,6 +105,7 @@ public partial class MainWindow : Window
         CommandBindings.Add(new CommandBinding(OpenFileCommand, OnOpenFile));
         CommandBindings.Add(new CommandBinding(SaveFileCommand, OnSaveFile));
         CommandBindings.Add(new CommandBinding(CompleteCommand, (_, _) => ShowCompletion()));
+        CommandBindings.Add(new CommandBinding(HelpContentsCommand, (_, _) => ShowHelpContents()));
 
         LoadSyntaxHighlighting();
 
@@ -984,6 +992,54 @@ public partial class MainWindow : Window
     }
 
     // ---- Help ------------------------------------------------------------------
+
+    /// <summary>The help file, beside the executable. See Ims.App.csproj.</summary>
+    private static string HelpFilePath => Path.Combine(
+        AppContext.BaseDirectory, "Resources", "Help", "ims-help.html");
+
+    /// <summary>
+    /// Opens the user help in the default browser.
+    /// </summary>
+    /// <remarks>
+    /// The browser rather than an in-window view, because WPF has no HTML renderer
+    /// worth using here. <c>WebBrowser</c> is IE11 and renders modern CSS badly;
+    /// WebView2 needs a runtime that is an administrator install, which NFR-7 rules
+    /// out. The default browser is already present, already trusted, and gets
+    /// find-on-page and printing for free.
+    /// </remarks>
+    private void ShowHelpContents()
+    {
+        string path = HelpFilePath;
+
+        if (!File.Exists(path))
+        {
+            // A copied folder that lost its Resources directory. Say which file is
+            // missing rather than letting ShellExecute fail with its own wording.
+            MessageBox.Show(
+                this,
+                $"The help file was not found at:\n\n{path}\n\n"
+                    + "It is part of the installed folder — if that folder was copied, "
+                    + "copy the Resources directory with it.",
+                "Could not open help",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            // UseShellExecute so the file goes to whatever the user has associated
+            // with .html; Process.Start cannot launch a document without it.
+            using var _ = System.Diagnostics.Process.Start(
+                new System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+        }
+        catch (System.ComponentModel.Win32Exception ex)
+        {
+            // No handler registered for .html, or the shell refused to launch it.
+            MessageBox.Show(this, ex.Message, "Could not open help",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
 
     private void OnShowHistory(object sender, RoutedEventArgs e) =>
         new HistoryWindow(_viewModel) { Owner = this }.Show();

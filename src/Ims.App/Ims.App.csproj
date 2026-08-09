@@ -66,6 +66,17 @@
     <!-- The original artwork. Not compiled in: it is what tools/make-ico.ps1 reads
          to regenerate the two above. -->
     <None Include="Resources\ims.png" />
+
+    <!--
+      User help, opened by Help → Contents in the default browser.
+
+      Content rather than EmbeddedResource: WPF has no HTML renderer, so the file
+      has to exist on disk for a browser to open. Copied beside the exe, which also
+      puts it in the pilot zip without the publish profile knowing about it.
+    -->
+    <Content Include="Resources\Help\ims-help.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

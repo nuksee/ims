@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>IMS Help — Informix Management Studio</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1f2328;
+    --muted: #5f6368;
+    --rule: #d8dce0;
+    --code-bg: #f4f5f7;
+    --accent: #0b5cad;
+    --warn-bg: #fff4ce;
+    --warn-rule: #e0c060;
+    --warn-fg: #5c4600;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #16191d;
+      --fg: #e6e8ea;
+      --muted: #9aa3ad;
+      --rule: #2f353c;
+      --code-bg: #21262d;
+      --accent: #6cb0f5;
+      --warn-bg: #3a3116;
+      --warn-rule: #7a6524;
+      --warn-fg: #f0dfa8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.6 "Segoe UI", system-ui, sans-serif;
+  }
+  .wrap { display: flex; align-items: flex-start; max-width: 1100px; margin: 0 auto; }
+  nav {
+    position: sticky; top: 0; flex: 0 0 210px; padding: 28px 16px 28px 24px;
+    max-height: 100vh; overflow-y: auto;
+  }
+  nav p { margin: 0 0 8px; font-size: 11px; letter-spacing: .08em;
+          text-transform: uppercase; color: var(--muted); }
+  nav a { display: block; padding: 3px 0; color: var(--fg);
+          text-decoration: none; font-size: 13.5px; }
+  nav a:hover { color: var(--accent); text-decoration: underline; }
+  main { flex: 1 1 auto; min-width: 0; padding: 28px 24px 80px; }
+  h1 { font-size: 26px; margin: 0 0 4px; font-weight: 600; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  h2 { font-size: 19px; font-weight: 600; margin: 34px 0 10px;
+       padding-top: 14px; border-top: 1px solid var(--rule); }
+  h2:first-of-type { border-top: 0; padding-top: 0; margin-top: 24px; }
+  h3 { font-size: 15px; font-weight: 600; margin: 20px 0 6px; }
+  p, li { margin: 8px 0; }
+  code, kbd {
+    font-family: Consolas, "Cascadia Mono", monospace; font-size: 13px;
+    background: var(--code-bg); padding: 1px 5px; border-radius: 3px;
+  }
+  kbd { border: 1px solid var(--rule); }
+  pre { background: var(--code-bg); padding: 12px 14px; border-radius: 5px;
+        overflow-x: auto; font-size: 13px; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; font-size: 14px;
+          display: block; overflow-x: auto; }
+  th, td { text-align: left; padding: 7px 12px 7px 0; border-bottom: 1px solid var(--rule);
+           vertical-align: top; }
+  th { font-weight: 600; color: var(--muted); font-size: 12.5px;
+       text-transform: uppercase; letter-spacing: .04em; }
+  .note {
+    background: var(--warn-bg); border: 1px solid var(--warn-rule); color: var(--warn-fg);
+    padding: 10px 14px; border-radius: 5px; margin: 16px 0;
+  }
+  .note p { margin: 4px 0; }
+  a { color: var(--accent); }
+  footer { margin-top: 44px; padding-top: 14px; border-top: 1px solid var(--rule);
+           color: var(--muted); font-size: 13px; }
+  @media (max-width: 760px) {
+    .wrap { display: block; }
+    nav { position: static; max-height: none; padding: 20px 24px 0; }
+    nav a { display: inline-block; margin-right: 14px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<nav>
+  <p>Contents</p>
+  <a href="#start">Getting started</a>
+  <a href="#connect">Connections</a>
+  <a href="#browse">Object browser</a>
+  <a href="#sql">SQL editor</a>
+  <a href="#results">Results</a>
+  <a href="#sessions">Session monitor</a>
+  <a href="#keys">Keyboard</a>
+  <a href="#files">Files and logs</a>
+  <a href="#trouble">Troubleshooting</a>
+  <a href="#safety">What IMS will not do</a>
+</nav>
+
+<main>
+
+<h1>Informix Management Studio</h1>
+<p class="sub">One window in which to connect to an Informix server, browse its objects, write and run SQL, and see what the server is doing.</p>
+
+<div class="note">
+  <p><strong>Early build.</strong> Not every capability described here is finished. If a menu item is missing or disabled, it is not yet implemented rather than broken — <code>docs/IMPLEMENTATION-TODO.md</code> in the source repository records exactly what is and is not built.</p>
+</div>
+
+<h2 id="start">Getting started</h2>
+
+<p>IMS needs the <strong>IBM Informix Client SDK</strong> installed, with the 64-bit ODBC driver registered. The CSDK is not bundled — IMS assumes no rights to redistribute IBM client libraries — so it must be installed separately.</p>
+
+<p>If the SDK is missing or misconfigured, IMS says so at startup in a prerequisite window that explains what is wrong, rather than failing later as an unexplained connection error. <strong>Help &rarr; About IMS</strong> shows the detected SDK version, <code>INFORMIXDIR</code>, and ODBC driver name — the three values worth checking first when something will not connect.</p>
+
+<h2 id="connect">Connections</h2>
+
+<p>A connection in IMS is described entirely by its own settings rather than by the machine's <code>sqlhosts</code> file, so a connection that works on your workstation works the same way on someone else's.</p>
+
+<table>
+  <tr><th>Field</th><th>Meaning</th></tr>
+  <tr><td><code>Server</code></td><td>The Informix server name (the <code>INFORMIXSERVER</code> value), for example <code>ol_dev</code>.</td></tr>
+  <tr><td><code>Host</code></td><td>Hostname or address of the machine running the server.</td></tr>
+  <tr><td><code>Service</code></td><td>Port or service name, commonly <code>9088</code>.</td></tr>
+  <tr><td><code>Protocol</code></td><td>Almost always <code>onsoctcp</code>.</td></tr>
+  <tr><td><code>Database</code></td><td>The database to open. Naming one is required — this server refuses an empty value.</td></tr>
+  <tr><td><code>Environment</code></td><td>Development, UAT or Production. Shown persistently beside the connection.</td></tr>
+</table>
+
+<h3>Mark the environment honestly</h3>
+<p>The environment label is shown next to the connection at all times, so a production connection cannot be mistaken for another. It changes nothing about how statements are sent — it exists purely so you can see, at a glance, what you are pointed at.</p>
+
+<h3>Passwords</h3>
+<p>Your password goes into <strong>Windows Credential Manager</strong>, never into a configuration file and never into a log. Saved connections are stored without passwords; the entries in Credential Manager are keyed per connection, so deleting a connection does not orphan its credential.</p>
+
+<h2 id="browse">Object browser</h2>
+
+<p>The tree on the left lists the objects in the connected database — tables, views, indexes, procedures — grouped by owner. Expanding a node loads its children on demand rather than reading the whole catalogue at connect time, so opening a large schema does not stall.</p>
+
+<p>Right-click a node for the actions available on it, including refreshing a single node when you have changed something outside IMS. Selecting an object shows its definition; for a view, that is the source Informix itself holds.</p>
+
+<h2 id="sql">SQL editor</h2>
+
+<p>The editor highlights Informix SQL and SPL. Each tab holds one script with its own connection and its own results, so a long query in one tab does not block work in another.</p>
+
+<table>
+  <tr><th>Action</th><th>Key</th></tr>
+  <tr><td>Run the script, or the selection if there is one</td><td><kbd>F5</kbd></td></tr>
+  <tr><td>Cancel — see the note below</td><td><kbd>Alt</kbd> + <kbd>Break</kbd></td></tr>
+  <tr><td>New tab</td><td><kbd>Ctrl</kbd> + <kbd>N</kbd></td></tr>
+</table>
+
+<p>Selecting text and running executes only the selection. That is the usual way to run one statement out of a longer script.</p>
+
+<div class="note">
+  <p><strong>Cancelling stops the waiting, not the statement.</strong> Measured against Informix 14.10, the ODBC driver's cancel does not reach the server: the statement runs to completion or to its timeout regardless. IMS therefore stops <em>waiting</em> for the result and returns the window to you, and the session stays usable — but the server keeps working until the statement finishes on its own.</p>
+  <p>The practical consequence: a cancel frees you, not the server. Bound an expensive query before you send it — with <code>FIRST</code>, or a restrictive <code>WHERE</code> — rather than relying on cancelling it afterwards.</p>
+</div>
+
+<h2 id="results">Results</h2>
+
+<p>Each statement that returns rows gets its own result tab, labelled by the statement it came from. Rows are fetched in blocks rather than all at once, so a large result starts displaying immediately; <strong>Fetch more rows</strong> continues it. When a grid is showing only part of a result, it says so — a truncated grid is never presented as a complete one.</p>
+
+<p><strong>Copy selection</strong> puts the selected cells on the clipboard, tab-separated, so they paste into a spreadsheet with columns intact.</p>
+
+<h2 id="sessions">Session monitor</h2>
+
+<p>A read-only view of what the server is doing, drawn from <code>sysmaster</code> — sessions, what they are running, and what they are waiting on. It answers "what is holding this up" without a shell on the database host.</p>
+
+<p>It is strictly read-only. IMS does not offer to kill a session; if a session needs terminating, that is an administrative action for whoever owns the server, done with the server's own tools.</p>
+
+<h2 id="keys">Keyboard</h2>
+
+<table>
+  <tr><th>Action</th><th>Key</th></tr>
+  <tr><td>Run script or selection</td><td><kbd>F5</kbd></td></tr>
+  <tr><td>Stop waiting for the running statement</td><td><kbd>Alt</kbd> + <kbd>Break</kbd></td></tr>
+  <tr><td>New query tab</td><td><kbd>Ctrl</kbd> + <kbd>N</kbd></td></tr>
+  <tr><td>Copy selected cells</td><td><kbd>Ctrl</kbd> + <kbd>C</kbd></td></tr>
+  <tr><td>Close tab</td><td><kbd>Ctrl</kbd> + <kbd>W</kbd></td></tr>
+  <tr><td>This help</td><td><kbd>F1</kbd></td></tr>
+</table>
+
+<h2 id="files">Files and logs</h2>
+
+<table>
+  <tr><th>Location</th><th>What is there</th></tr>
+  <tr><td><code>%APPDATA%\IMS\connections.json</code></td><td>Saved connections. No passwords — those are in Credential Manager.</td></tr>
+  <tr><td><code>%LOCALAPPDATA%\IMS\logs</code></td><td>Log files. Credentials and result data are stripped before anything is written.</td></tr>
+  <tr><td>Windows Credential Manager</td><td>Your passwords, under entries beginning <code>IMS:</code>.</td></tr>
+</table>
+
+<p>Redaction happens at the logging boundary rather than at each call site, so no credential or row of result data reaches a log file even when logging is turned up for diagnosis. A log is safe to send with a bug report.</p>
+
+<h2 id="trouble">Troubleshooting</h2>
+
+<h3>IMS reports the Client SDK is missing</h3>
+<p>Check <strong>Help &rarr; About IMS</strong>. If <code>INFORMIXDIR</code> is empty the SDK is not installed or not on this account's environment. If it is set but the ODBC driver is <code>(none registered)</code>, the SDK is installed but its 64-bit driver is not registered — IMS is a 64-bit process and cannot load a 32-bit driver.</p>
+
+<h3>Error -354, "Incorrect database or cursor name format"</h3>
+<p>The connection has no database named. The ODBC driver accepts an empty <code>Database</code>, but the server refuses it; naming a database resolves it.</p>
+
+<h3>A query will not stop</h3>
+<p>Expected — see the note under <a href="#sql">SQL editor</a>. Cancelling returns the window to you; the statement continues on the server until it finishes or hits its timeout.</p>
+
+<h3>Reporting a problem</h3>
+<p>Open <strong>Help &rarr; About IMS</strong> and click <strong>Copy details</strong>. That puts the version, the exact commit, the SDK version and the OS on your clipboard. The commit is what makes a report reproducible — a version number alone is true of several builds.</p>
+
+<h2 id="safety">What IMS will not do</h2>
+
+<p>IMS performs no administrative change of its own. Every statement it sends is one you typed or explicitly requested; it issues nothing on its own initiative. What you may do is decided by your Informix privileges, not by IMS — it grants no capability you do not already hold, and there is no shared or service account behind it.</p>
+
+<p>It also emits <strong>no telemetry</strong> of any kind. That is enforced by a test that fails the build if a telemetry package enters the dependency graph, rather than by intention.</p>
+
+<p>Those constraints are what make it reasonable to point IMS at a production server, and to hand it to a colleague.</p>
+
+<footer>
+  Informix Management Studio &middot; licensed under Apache-2.0 &middot;
+  <a href="https://github.com/nuksee/ims">github.com/nuksee/ims</a><br>
+  Informix is a trademark of IBM. IMS is not affiliated with or endorsed by IBM.
+</footer>
+
+</main>
+</div>
+</body>
+</html>

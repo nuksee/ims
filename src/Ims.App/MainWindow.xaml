@@ -79,6 +79,8 @@
         <MenuItem Header="Fetch more rows" Click="OnFetchMore" />
       </MenuItem>
       <MenuItem Header="_Help">
+        <MenuItem Header="_Contents" Command="{x:Static local:MainWindow.HelpContentsCommand}" />
+        <Separator />
         <MenuItem Header="Query _history…" Click="OnShowHistory" />
         <MenuItem Header="_About IMS" Click="OnAbout" />
       </MenuItem>
