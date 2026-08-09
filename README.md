@@ -18,7 +18,7 @@ constraint is what makes it safe to point at production and safe to hand to a co
 > misconfigured one — there is no connection UI yet. See
 > [IMPLEMENTATION-TODO.md](docs/IMPLEMENTATION-TODO.md) for exactly what is and isn't built.
 >
-> Internal, unsupported, and not a replacement for the Informix CLI.
+> Unsupported, provided as-is, and not a replacement for the Informix CLI.
 
 ---
 
@@ -146,5 +146,7 @@ and stay there.
 
 ## Licence
 
-Not yet determined. Internal use for now; a product or open-source release is deliberately kept
-possible, which is the reason for the no-CSDK-redistribution constraint above.
+[Apache License 2.0](LICENSE). Copyright 2026 Kaveh Shahbazi.
+
+The IBM Informix Client SDK is **not** covered by that licence and is not redistributed here —
+it remains subject to IBM's own terms and must be installed separately (DEC-10).

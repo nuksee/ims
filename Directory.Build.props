@@ -22,7 +22,10 @@
     <!-- PR-6.5: no telemetry, including the SDK's own first-run message. -->
     <DotNetCliToolReferenceSuppressed>true</DotNetCliToolReferenceSuppressed>
 
-        <Product>Informix Management Studio</Product>
+    <Product>Informix Management Studio</Product>
+    <Authors>Kaveh Shahbazi</Authors>
+    <Copyright>Copyright 2026 Kaveh Shahbazi</Copyright>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <!-- Bump this when cutting a tag, or the About window will contradict it. The
          commit id beside it is stamped automatically and cannot drift; this number
          is the one that can, so it is the one to check. -->
