@@ -135,27 +135,34 @@
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                  MouseDoubleClick="OnConnect"
                  AutomationProperties.Name="Saved connections">
+          <!-- The menu is a resource, not inline in the Setter below. A Click
+               handler on a MenuItem inside a Style setter cannot be wired up as an
+               instance event: the XAML compiler emits AddHandler against the wrong
+               target type and the window throws on load. As a keyed resource the
+               items are ordinary named elements again, and the handlers bind. -->
+          <ListBox.Resources>
+            <ContextMenu x:Key="ConnectionContextMenu">
+              <MenuItem Header="C_onnect" Click="OnConnect"
+                        Visibility="{Binding PlacementTarget.DataContext.IsConnected,
+                                     RelativeSource={RelativeSource Self},
+                                     Converter={StaticResource BoolToVisibility},
+                                     ConverterParameter=Invert}" />
+              <MenuItem Header="_Disconnect" Click="OnDisconnect"
+                        Visibility="{Binding PlacementTarget.DataContext.IsConnected,
+                                     RelativeSource={RelativeSource Self},
+                                     Converter={StaticResource BoolToVisibility}}" />
+              <Separator />
+              <MenuItem Header="_Edit…" Click="OnEditConnection" />
+              <MenuItem Header="_Remove" Click="OnRemoveConnection" />
+            </ContextMenu>
+          </ListBox.Resources>
+
           <!-- Right-clicking a row selects it first, so the menu always acts on
                the row under the cursor rather than the previous selection. -->
           <ListBox.ItemContainerStyle>
             <Style TargetType="ListBoxItem">
               <EventSetter Event="PreviewMouseRightButtonDown" Handler="OnConnectionRightClick" />
-              <Setter Property="ContextMenu">
-                <Setter.Value>
-                  <ContextMenu>
-                    <MenuItem Header="C_onnect" Click="OnConnect"
-                              Visibility="{Binding IsConnected,
-                                           Converter={StaticResource BoolToVisibility},
-                                           ConverterParameter=Invert}" />
-                    <MenuItem Header="_Disconnect" Click="OnDisconnect"
-                              Visibility="{Binding IsConnected,
-                                           Converter={StaticResource BoolToVisibility}}" />
-                    <Separator />
-                    <MenuItem Header="_Edit…" Click="OnEditConnection" />
-                    <MenuItem Header="_Remove" Click="OnRemoveConnection" />
-                  </ContextMenu>
-                </Setter.Value>
-              </Setter>
+              <Setter Property="ContextMenu" Value="{StaticResource ConnectionContextMenu}" />
             </Style>
           </ListBox.ItemContainerStyle>
 
