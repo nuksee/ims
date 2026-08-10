@@ -408,6 +408,14 @@
               <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
               <!-- PR-2.2: children are fetched on first expansion, never up front. -->
               <EventSetter Event="Expanded" Handler="OnTreeItemExpanded" />
+              <!--
+                Right-click selects the node it lands on. A TreeViewItem does not do
+                this on its own, so the menu below — which acts on the *selection* —
+                was acting on whatever had last been left-clicked. Right-clicking a
+                table and choosing "Show detail" would open a different table's.
+              -->
+              <EventSetter Event="PreviewMouseRightButtonDown"
+                           Handler="OnTreeItemRightButtonDown" />
             </Style>
           </TreeView.ItemContainerStyle>
 

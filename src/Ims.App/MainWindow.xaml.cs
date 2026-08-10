@@ -936,6 +936,55 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Selects the node a right-click lands on, before the menu opens.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A <see cref="TreeViewItem"/> selects on left-click only. The context menu acts
+    /// on the tree's <em>selection</em>, so without this a right-click showed a menu
+    /// describing one node while every action ran against whichever node had last been
+    /// left-clicked — right-click a table, choose "Show detail", get a different
+    /// table's. Worse for being quiet: the menu's enabled items came from the old
+    /// selection too, so the wrong answer looked like the right one.
+    /// </para>
+    /// <para>
+    /// Previewing the button-down puts the selection in place before the menu builds
+    /// its bindings. The event is deliberately <em>not</em> handled: the right-click
+    /// still has to reach the TreeViewItem for the menu to open at all.
+    /// </para>
+    /// </remarks>
+    private void OnTreeItemRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // The style is on every container, so the click is seen by each item from the
+        // clicked one up to the root. Only the innermost is the one under the cursor.
+        if (sender is not TreeViewItem item
+            || !ReferenceEquals(item, FindParentTreeViewItem(e.OriginalSource as DependencyObject)))
+        {
+            return;
+        }
+
+        // Focus as well as select: without it the tree can keep the caret elsewhere and
+        // draw the selection grey, which reads as "not selected" (NFR-8).
+        item.Focus();
+        item.IsSelected = true;
+    }
+
+    /// <summary>The nearest <see cref="TreeViewItem"/> at or above a hit-tested element.</summary>
+    private static TreeViewItem? FindParentTreeViewItem(DependencyObject? source)
+    {
+        while (source is not null and not TreeViewItem)
+        {
+            // VisualTreeHelper alone stops at a ContentPresenter's template boundary,
+            // which is exactly where a TreeViewItem's header content sits.
+            source = source is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+                ? System.Windows.Media.VisualTreeHelper.GetParent(source)
+                : LogicalTreeHelper.GetParent(source);
+        }
+
+        return source as TreeViewItem;
+    }
+
     /// <summary>PR-2.8: put a starting query in front of the user, do not run it.</summary>
     /// <remarks>
     /// It opens in an editor rather than executing, because PR-6.2 says IMS sends no
