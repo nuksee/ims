@@ -375,6 +375,37 @@ deferred scope would overstate them. None is a Must; none should displace a Must
   tab that is *not* the one on screen — the ordinary case for this gesture and one the ✕ made
   rare: unsaved text in the visible editor was not flushed to its own tab first, and selection
   jumped to the last tab instead of staying put. Both fixed
+- [x] **Query toolbar above the tab strip** — the discoverability half of PR-8.1. Every query
+  action was reachable only from the menu bar or by knowing its gesture, Execute included. The
+  buttons drive the existing routed commands, so there is one definition per action and the
+  menu and toolbar cannot drift. Notes worth keeping:
+  - **A `Border` + `DockPanel`, not WPF's `ToolBar`.** `ToolBar` replaces each child `Button`'s
+    template with its own chrome, which fights the inline padding used everywhere else in this
+    window. Worse, it moves buttons it cannot fit into an overflow popup — and this toolbar sits
+    in a column whose width the user drags, so Execute would vanish mid-drag and
+    `AutomationProperties` on an overflowed item is unreachable, taking NFR-8 with it
+  - **The button run is in a hidden-bar `ScrollViewer`**, the same trick as the tab strip below
+    and for the same reason. A `DockPanel` measures at its full desired width whatever space is
+    on offer, so without it the run pushed the trailing History/Help group clean off the window
+    — measured 260px past the right edge, both buttons enabled and undrawable. `ClipToBounds`
+    alone does not fix it: it clips the drawing, not the measure
+  - **`EditorTabViewModel.CanExecute` was computed and bound to nothing** until this. Execute on
+    a disconnected tab was a silent no-op. The Query menu now binds the same property, so the
+    two agree
+  - **`ClearResultsCommand` is new**, and exposes `ClearResultsAsync` — written for PR-4.7 and
+    never reachable by a user since. It disposes each result, so it returns cursors as well as
+    screen space
+  - **Icons: `FluentIcons.Wpf` (MIT)**, Microsoft's fluentui-system-icons. A glyph font, so it
+    scales with DPI and takes its colour from the button. MIT keeps the DEC-10 open-source
+    option intact. Note the casing — the older `FluentIcons.WPF` is deprecated on nuget.org.
+    Commit and Roll back keep text labels beside their icons: confusing those two is not
+    recoverable and no pair of icons tells them apart
+  - **Deferred, with reasons.** SSMS's *database dropdown*: `ConnectionDescriptor.Database` is
+    fixed for the life of a connection, there is no enumeration, and switching would mean
+    cloning the descriptor and reconnecting — silently dropping any open transaction. A
+    read-only target label stands in its place. *Parse* and both *execution-plan* buttons: there
+    is no SQL parser here (`Ims.Core.Sql` is lexical only) and PR-6.2 says IMS sends no
+    statement the user did not type. *Format SQL* is PR-3.13, still deferred
 - [ ] **Switch the bottom pane to Messages when a statement fails** — arguably a **PR-3.4
   refinement** rather than polish: PR-3.4 requires "indicating clearly which statement failed",
   and today the failure is written into `Outcomes` (the Messages list) while the pane stays on

@@ -4,6 +4,7 @@
         xmlns:local="clr-namespace:Ims.App"
         xmlns:vm="clr-namespace:Ims.App.ViewModels"
         xmlns:avalonEdit="http://icsharpcode.net/sharpdevelop/avalonedit"
+        xmlns:ic="clr-namespace:FluentIcons.Wpf;assembly=FluentIcons.Wpf"
         Title="Informix Management Studio"
         Icon="Resources/ims.ico"
         Height="820" Width="1320"
@@ -198,15 +199,28 @@
         <MenuItem Header="E_xit" Click="OnExit" />
       </MenuItem>
       <MenuItem Header="_Query">
-        <MenuItem Header="_Execute" Command="{x:Static local:MainWindow.ExecuteCommand}" />
-        <MenuItem Header="Execute _selection" Command="{x:Static local:MainWindow.ExecuteSelectionCommand}" />
-        <MenuItem Header="_Cancel" Command="{x:Static local:MainWindow.CancelExecutionCommand}" />
+        <!--
+          IsEnabled mirrors the toolbar's. EditorTabViewModel.CanExecute was computed
+          and bound nowhere until the toolbar arrived, so these items stayed lit on a
+          disconnected tab and did nothing when clicked. Menu and toolbar disagreeing
+          about whether Execute is available would read as a bug in one of them.
+        -->
+        <MenuItem Header="_Execute" Command="{x:Static local:MainWindow.ExecuteCommand}"
+                  IsEnabled="{Binding SelectedTab.CanExecute, FallbackValue=False}" />
+        <MenuItem Header="Execute _selection" Command="{x:Static local:MainWindow.ExecuteSelectionCommand}"
+                  IsEnabled="{Binding SelectedTab.CanExecute, FallbackValue=False}" />
+        <MenuItem Header="_Cancel" Command="{x:Static local:MainWindow.CancelExecutionCommand}"
+                  IsEnabled="{Binding SelectedTab.IsExecuting, FallbackValue=False}" />
         <Separator />
         <!-- Listed so the gesture is discoverable; PR-3.2 is not much use unfound. -->
         <MenuItem Header="Complete _word" Command="{x:Static local:MainWindow.CompleteCommand}" />
         <Separator />
-        <MenuItem Header="Commit" Click="OnCommit" />
-        <MenuItem Header="Roll back" Click="OnRollback" />
+        <MenuItem Header="Commit" Click="OnCommit"
+                  IsEnabled="{Binding SelectedTab.Session,
+                              Converter={StaticResource NotNullToBool}, FallbackValue=False}" />
+        <MenuItem Header="Roll back" Click="OnRollback"
+                  IsEnabled="{Binding SelectedTab.Session,
+                              Converter={StaticResource NotNullToBool}, FallbackValue=False}" />
       </MenuItem>
       <MenuItem Header="_Connection">
         <MenuItem Header="_New connection…" Click="OnNewConnection" />
@@ -221,6 +235,8 @@
         <Separator />
         <MenuItem Header="Copy selection" Click="OnCopySelection" />
         <MenuItem Header="Fetch more rows" Click="OnFetchMore" />
+        <Separator />
+        <MenuItem Header="C_lear results" Command="{x:Static local:MainWindow.ClearResultsCommand}" />
       </MenuItem>
       <MenuItem Header="_Help">
         <MenuItem Header="_Contents" Command="{x:Static local:MainWindow.HelpContentsCommand}" />
@@ -489,10 +505,281 @@
       <Grid Grid.Column="2" Margin="0,6,6,6">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
           <RowDefinition Height="*" MinHeight="120" />
           <RowDefinition x:Name="ResultsSplitterRow" Height="4" />
           <RowDefinition x:Name="ResultsRow" Height="*" MinHeight="120" />
         </Grid.RowDefinitions>
+
+        <!--
+          Query toolbar (PR-8.1). SSMS puts one here, above the tab strip, and until
+          now every query action in IMS was reachable only from the menu bar or by
+          knowing its gesture — Execute included.
+
+          A Border and a DockPanel rather than a ToolBar, for two reasons. ToolBar
+          replaces each child Button's template with its own chrome, which fights the
+          inline padding this window uses everywhere else. More seriously, ToolBar
+          moves buttons it cannot fit into an overflow popup, and this toolbar sits in
+          a column whose width the user drags: Execute would disappear mid-drag, and
+          AutomationProperties on an overflowed item is not reachable, so NFR-8 would
+          go with it. A DockPanel clips instead — visible and predictable. That is the
+          same failure the tab strip below had to be rebuilt around.
+
+          The leftmost element is a read-only target label, not SSMS's database
+          dropdown: ConnectionDescriptor.Database is fixed for the life of a
+          connection and there is no per-session switch to offer. Parse and the
+          execution-plan buttons are absent for a harder reason — there is no SQL
+          parser here, and PR-6.2 says IMS sends no statement the user did not type.
+        -->
+        <Border Grid.Row="0" Margin="0,0,0,4" Padding="4,3"
+                Background="#FFF5F5F5" BorderBrush="#FFE0E0E0" BorderThickness="0,0,0,1"
+                KeyboardNavigation.TabNavigation="Continue">
+          <Border.Resources>
+            <!--
+              Scoped to this toolbar rather than App.xaml: an implicit Button style up
+              there would repad every dialog in the app, and a keyed one would mean
+              repeating Style= on all seventeen buttons for no reuse. Deliberately no
+              ControlTemplate — keeping stock WPF chrome is the whole reason this is
+              not a ToolBar.
+            -->
+            <Style TargetType="Button">
+              <Setter Property="Padding" Value="6,2" />
+              <Setter Property="Margin" Value="2,0,0,0" />
+              <Setter Property="MinWidth" Value="30" />
+              <Setter Property="Background" Value="Transparent" />
+              <Setter Property="BorderThickness" Value="0" />
+              <Setter Property="VerticalAlignment" Value="Center" />
+              <Setter Property="HorizontalContentAlignment" Value="Center" />
+            </Style>
+
+            <!-- Separator draws a horizontal rule; in a horizontal band the divider
+                 has to be a vertical one, so it is drawn directly. -->
+            <!-- SymbolIcon takes its glyph size from FontSize. Set once here rather
+                 than on each of the fourteen icons, so they cannot drift apart. -->
+            <Style TargetType="ic:SymbolIcon">
+              <Setter Property="FontSize" Value="13" />
+            </Style>
+
+            <Style x:Key="ToolbarDivider" TargetType="Border">
+              <Setter Property="Width" Value="1" />
+              <Setter Property="Margin" Value="6,2" />
+              <Setter Property="Background" Value="#FFD0D0D0" />
+            </Style>
+          </Border.Resources>
+
+          <!--
+            SelectedTab is an ITabViewModel, because object detail tabs share this
+            strip. Every editor-only binding below therefore carries a FallbackValue:
+            on a detail tab the path does not resolve, and the fallback is what
+            disables the button instead of leaving it live and doing nothing.
+          -->
+          <!--
+            Two columns rather than one DockPanel with a right-docked group. The
+            actions column is Auto and clips when the user drags the splitter narrow;
+            the trailing column is Auto too, so History and Help keep their place at
+            the right edge instead of depending on how much room the left group left
+            over. A star column between them would only move the clipping.
+          -->
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+
+            <!--
+              The button run lives in a scroller with its bars hidden, which is the
+              only thing that lets the star column actually shrink: a DockPanel
+              measures at its full desired width regardless of the space on offer, so
+              the run pushed History and Help clean off the window instead of
+              clipping — measured at 260px past the right edge. ClipToBounds alone
+              does not fix it, because it clips the drawing and not the measure.
+
+              Same trick, and the same reason, as the tab strip below.
+            -->
+            <ScrollViewer Grid.Column="0"
+                          HorizontalScrollBarVisibility="Hidden"
+                          VerticalScrollBarVisibility="Disabled"
+                          Focusable="False">
+            <DockPanel LastChildFill="False">
+
+            <!-- Which instance this tab runs against (PR-1.6). Read-only. -->
+            <TextBlock DockPanel.Dock="Left" VerticalAlignment="Center" Margin="4,0,2,0"
+                       MaxWidth="240" TextTrimming="CharacterEllipsis"
+                       Text="{Binding SelectedTab.TargetLabel, FallbackValue='Not connected'}"
+                       ToolTip="{Binding SelectedTab.TargetLabel, FallbackValue='Not connected'}"
+                       AutomationProperties.Name="Target instance" />
+            <!-- PlugConnectedCheckmark rather than the plain PlugConnected: beside
+                 PlugDisconnected at this size the two plain plugs were a coin toss,
+                 and the pair has to be told apart at a glance. -->
+            <Button DockPanel.Dock="Left" Click="OnConnect"
+                    ToolTip="Connect the selected instance"
+                    AutomationProperties.Name="Connect">
+              <ic:SymbolIcon Symbol="PlugConnectedCheckmark" />
+            </Button>
+            <Button DockPanel.Dock="Left" Click="OnDisconnect"
+                    ToolTip="Disconnect the selected instance"
+                    AutomationProperties.Name="Disconnect">
+              <ic:SymbolIcon Symbol="PlugDisconnected" />
+            </Button>
+
+            <Border DockPanel.Dock="Left" Style="{StaticResource ToolbarDivider}" />
+
+            <Button DockPanel.Dock="Left"
+                    Command="{x:Static local:MainWindow.NewQueryCommand}"
+                    ToolTip="New query tab (Ctrl+N)"
+                    AutomationProperties.Name="New query">
+              <ic:SymbolIcon Symbol="DocumentAdd" />
+            </Button>
+            <Button DockPanel.Dock="Left"
+                    Command="{x:Static local:MainWindow.OpenFileCommand}"
+                    ToolTip="Open a .sql file (Ctrl+O)"
+                    AutomationProperties.Name="Open file">
+              <ic:SymbolIcon Symbol="FolderOpen" />
+            </Button>
+            <Button DockPanel.Dock="Left"
+                    Command="{x:Static local:MainWindow.SaveFileCommand}"
+                    ToolTip="Save this tab (Ctrl+S)"
+                    AutomationProperties.Name="Save">
+              <ic:SymbolIcon Symbol="Save" />
+            </Button>
+
+            <Border DockPanel.Dock="Left" Style="{StaticResource ToolbarDivider}" />
+
+            <!--
+              Execute and Cancel share one cell rather than sitting side by side, so
+              the strip does not reflow the instant a run starts and slide every
+              button to its right out from under the cursor.
+
+              IsEnabled comes from EditorTabViewModel.CanExecute, which until now was
+              computed and bound to nothing: Execute on a disconnected tab was a
+              silent no-op. The Query menu binds the same property, so the two agree.
+
+              The green is decoration. The icon shape and the word carry the meaning,
+              which is what NFR-8 asks for.
+            -->
+            <Grid DockPanel.Dock="Left" Margin="2,0,0,0">
+              <Button Margin="0"
+                      Command="{x:Static local:MainWindow.ExecuteCommand}"
+                      IsEnabled="{Binding SelectedTab.CanExecute, FallbackValue=False}"
+                      Visibility="{Binding SelectedTab.IsExecuting,
+                                   Converter={StaticResource BoolToVisibility},
+                                   ConverterParameter=Invert, FallbackValue=Visible}"
+                      ToolTip="Run the script, or the selection if there is one (F5)"
+                      AutomationProperties.Name="Execute">
+                <!-- AccessText, not TextBlock: a TextBlock draws the underscore
+                     literally, where AccessText turns it into the Alt mnemonic. Same
+                     for every worded button below. -->
+                <StackPanel Orientation="Horizontal">
+                  <ic:SymbolIcon Symbol="Play" Foreground="#FF107C10" />
+                  <AccessText Text="_Execute" Margin="4,0,0,0" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Margin="0"
+                      Command="{x:Static local:MainWindow.CancelExecutionCommand}"
+                      Visibility="{Binding SelectedTab.IsExecuting,
+                                   Converter={StaticResource BoolToVisibility},
+                                   FallbackValue=Collapsed}"
+                      ToolTip="Stop waiting for the running statement (Alt+Break)"
+                      AutomationProperties.Name="Cancel execution">
+                <StackPanel Orientation="Horizontal">
+                  <ic:SymbolIcon Symbol="Stop" />
+                  <TextBlock Text="Cancel" Margin="4,0,0,0" VerticalAlignment="Center" />
+                  <!-- No mnemonic: Cancel occupies the same cell as Execute, and two
+                       buttons claiming Alt+E would be ambiguous. Alt+Break is the
+                       gesture, and it is in the tooltip. -->
+                </StackPanel>
+              </Button>
+            </Grid>
+
+            <Button DockPanel.Dock="Left"
+                    Command="{x:Static local:MainWindow.ExecuteSelectionCommand}"
+                    IsEnabled="{Binding SelectedTab.CanExecute, FallbackValue=False}"
+                    ToolTip="Run only the selected text (Ctrl+Enter)"
+                    AutomationProperties.Name="Execute selection">
+              <ic:SymbolIcon Symbol="PlayCircle" />
+            </Button>
+
+            <Border DockPanel.Dock="Left" Style="{StaticResource ToolbarDivider}" />
+
+            <!-- Worded as well as iconned, unlike the rest. Committing when you meant
+                 to roll back is not recoverable, and no pair of icons tells those two
+                 apart at a glance. PR-3.7 states the transaction in words for the
+                 same reason. -->
+            <Button DockPanel.Dock="Left" Click="OnCommit"
+                    IsEnabled="{Binding SelectedTab.Session,
+                                Converter={StaticResource NotNullToBool}, FallbackValue=False}"
+                    ToolTip="Commit the open transaction"
+                    AutomationProperties.Name="Commit">
+              <StackPanel Orientation="Horizontal">
+                <ic:SymbolIcon Symbol="CheckmarkCircle" />
+                <AccessText Text="Co_mmit" Margin="4,0,0,0" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button DockPanel.Dock="Left" Click="OnRollback"
+                    IsEnabled="{Binding SelectedTab.Session,
+                                Converter={StaticResource NotNullToBool}, FallbackValue=False}"
+                    ToolTip="Roll back the open transaction"
+                    AutomationProperties.Name="Roll back">
+              <StackPanel Orientation="Horizontal">
+                <ic:SymbolIcon Symbol="ArrowUndo" />
+                <AccessText Text="Roll _back" Margin="4,0,0,0" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <Border DockPanel.Dock="Left" Style="{StaticResource ToolbarDivider}" />
+
+            <Button DockPanel.Dock="Left"
+                    Command="{x:Static local:MainWindow.CompleteCommand}"
+                    ToolTip="Complete the word being typed (Ctrl+Space)"
+                    AutomationProperties.Name="Complete word">
+              <ic:SymbolIcon Symbol="Keyboard" />
+            </Button>
+
+            <Border DockPanel.Dock="Left" Style="{StaticResource ToolbarDivider}" />
+
+            <!-- PR-4.7 keeps every result set until the next run replaces it, so a
+                 long session accumulates grids and their cursors. ClearResultsAsync
+                 has existed since then with nothing calling it. -->
+            <Button DockPanel.Dock="Left"
+                    Command="{x:Static local:MainWindow.ClearResultsCommand}"
+                    ToolTip="Clear the results and messages"
+                    AutomationProperties.Name="Clear results">
+              <ic:SymbolIcon Symbol="Eraser" />
+            </Button>
+            <!-- Only CSV gets a button. TSV, JSON and Excel stay on the Results menu:
+                 a split button would need the custom template this toolbar avoids. -->
+            <Button DockPanel.Dock="Left" Click="OnExportCsv"
+                    IsEnabled="{Binding SelectedTab.SelectedResult,
+                                Converter={StaticResource NotNullToBool}, FallbackValue=False}"
+                    ToolTip="Export the current result to CSV — the other formats are on the Results menu"
+                    AutomationProperties.Name="Export to CSV">
+              <ic:SymbolIcon Symbol="ArrowExportUp" />
+            </Button>
+            <Button DockPanel.Dock="Left" Click="OnCopySelection"
+                    ToolTip="Copy the selected cells, tab separated"
+                    AutomationProperties.Name="Copy selection">
+              <ic:SymbolIcon Symbol="Copy" />
+            </Button>
+            </DockPanel>
+            </ScrollViewer>
+
+            <!-- Not query actions, so they sit apart from the run of buttons. -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                        VerticalAlignment="Center" HorizontalAlignment="Right">
+              <Border Style="{StaticResource ToolbarDivider}" />
+              <Button Click="OnShowHistory"
+                      ToolTip="Query history"
+                      AutomationProperties.Name="Query history">
+                <ic:SymbolIcon Symbol="History" />
+              </Button>
+              <Button Command="{x:Static local:MainWindow.HelpContentsCommand}"
+                      ToolTip="Help contents (F1)"
+                      AutomationProperties.Name="Help">
+                <ic:SymbolIcon Symbol="QuestionCircle" />
+              </Button>
+            </StackPanel>
+          </Grid>
+        </Border>
 
         <!-- Tab headers only. One editor control is shared between tabs, which keeps
              a single AvalonEdit instance and its undo stack predictable. -->
@@ -520,7 +807,7 @@
           row measure is not the answer — a ScrollViewer does not pass its content's
           desired height up, so the strip collapsed to 20px instead.
         -->
-        <TabControl x:Name="TabHeaders" Grid.Row="0"
+        <TabControl x:Name="TabHeaders" Grid.Row="1"
                     ItemsSource="{Binding Tabs}"
                     SelectedItem="{Binding SelectedTab}"
                     SelectionChanged="OnTabChanged"
@@ -583,13 +870,13 @@
         </TabControl>
 
         <!--
-          Row 1 is whichever document the selected tab is: the shared editor, or an
+          This row is whichever document the selected tab is: the shared editor, or an
           object's detail. They are siblings toggled from code-behind rather than a
           ContentTemplate on the strip above, because that strip deliberately renders
           no content — see the comments on TabHeaders. One AvalonEdit serves every
           editor tab and it has to stay outside.
         -->
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
           <DockPanel x:Name="EditorHost">
             <!--
               Shown when a cancel freed the editor without stopping the statement, which
@@ -638,10 +925,10 @@
         </Grid>
 
         <GridSplitter x:Name="ResultsSplitter"
-                      Grid.Row="2" Height="4" HorizontalAlignment="Stretch"
+                      Grid.Row="3" Height="4" HorizontalAlignment="Stretch"
                       Background="#FFE0E0E0" />
 
-        <TabControl Grid.Row="3" x:Name="ResultsArea">
+        <TabControl Grid.Row="4" x:Name="ResultsArea">
           <TabItem x:Name="ResultsTab" Header="Results">
             <DockPanel>
               <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="4">

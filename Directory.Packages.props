@@ -35,6 +35,15 @@
     <!-- MVVM plumbing for the WPF shell. MIT. -->
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.0" />
 
+    <!-- Query toolbar icons: Microsoft's fluentui-system-icons, wrapped for WPF. MIT,
+         so it does not compromise the DEC-10 option of a product or open-source
+         release. A glyph font rather than image assets, so the icons stay sharp at
+         any DPI and take their colour from the button like text does.
+
+         Note the casing: FluentIcons.Wpf is the maintained 2.x line. The older
+         FluentIcons.WPF is deprecated on nuget.org. -->
+    <PackageVersion Include="FluentIcons.Wpf" Version="2.1.335" />
+
     <!-- Test stack. -->
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageVersion Include="xunit" Version="2.9.2" />

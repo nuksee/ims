@@ -66,6 +66,13 @@ public partial class MainWindow : Window
         "Help", nameof(HelpContentsCommand), typeof(MainWindow),
         [new KeyGesture(Key.F1)]);
 
+    // No gesture. Clearing is not something anyone reaches for mid-typing, and the
+    // free Ctrl combinations with focus in the editor belong to AvalonEdit. It is a
+    // routed command rather than a plain Click handler so the toolbar button and any
+    // later Results menu item share one definition, as every command above does.
+    public static readonly RoutedUICommand ClearResultsCommand = new(
+        "Clear results", nameof(ClearResultsCommand), typeof(MainWindow));
+
     private readonly MainViewModel _viewModel;
     private readonly ConnectionStore _connections;
     private readonly WindowsCredentialStore _credentials;
@@ -115,6 +122,7 @@ public partial class MainWindow : Window
         CommandBindings.Add(new CommandBinding(SaveFileCommand, OnSaveFile));
         CommandBindings.Add(new CommandBinding(CompleteCommand, (_, _) => ShowCompletion()));
         CommandBindings.Add(new CommandBinding(HelpContentsCommand, (_, _) => ShowHelpContents()));
+        CommandBindings.Add(new CommandBinding(ClearResultsCommand, OnClearResults));
 
         LoadSyntaxHighlighting();
 
@@ -907,6 +915,26 @@ public partial class MainWindow : Window
         if (ResultGrid.SelectedCells.Count > 0)
         {
             System.Windows.Input.ApplicationCommands.Copy.Execute(null, ResultGrid);
+        }
+    }
+
+    /// <summary>
+    /// Drops the results and messages the current tab is holding.
+    /// </summary>
+    /// <remarks>
+    /// PR-4.7 keeps every result set until the next run replaces it, so a long
+    /// session accumulates grids and the cursors behind them. This is the way to let
+    /// them go without having to run a statement to do it.
+    ///
+    /// Unconditional: clearing a tab that has nothing is a harmless no-op, and
+    /// gating the button would only make it look broken on an empty tab.
+    /// </remarks>
+    private async void OnClearResults(object sender, RoutedEventArgs e)
+    {
+        if (SelectedEditor is { } tab)
+        {
+            await tab.ClearResultsAsync();
+            _viewModel.StatusText = "Results and messages cleared.";
         }
     }
 

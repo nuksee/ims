@@ -43,6 +43,10 @@
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
     <PackageReference Include="AvalonEdit" />
+
+    <!-- Query toolbar icons. Referenced here only: Ims.Core and Ims.Data.Informix
+         stay free of UI dependencies. -->
+    <PackageReference Include="FluentIcons.Wpf" />
   </ItemGroup>
 
   <ItemGroup>
