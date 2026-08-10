@@ -26,9 +26,9 @@ onstat -g ses                 # find your session id
 onmode -z <sid>               # end that session
 ```
 
-**This matters most because the test database shares a server with production.** A runaway
-cross join costs everyone. If you are about to run something big, know how you would stop it
-first.
+**This matters most where a non-production database shares a server with production.** A runaway
+cross join costs everyone on that instance. If you are about to run something big, know how you
+would stop it first.
 
 ### 2. Informix 14.10 only
 
@@ -53,9 +53,20 @@ useful — just expect it to be the interesting kind of useful.
 You do **not** need the .NET runtime — this build carries its own. You do **not** need local
 administrator rights to run it.
 
-The CSDK is not included, because IMS cannot redistribute IBM's client libraries. It is already
-on most workstations here. If it is missing or only the 32-bit driver is registered, IMS says so
-at startup and explains what to fix, rather than failing later as a puzzling connection error.
+The CSDK is not included, because IMS cannot redistribute IBM's client libraries. If it is
+missing, or only the 32-bit driver is registered, IMS says so at startup and explains what to
+fix, rather than failing later as a puzzling connection error.
+
+Check first whether you already have it — it often arrives with Informix server tooling, and
+your DBA may be able to point you at the copy your organisation already licenses. Otherwise:
+
+- [What the Client SDK is, and how to install it](https://www.ibm.com/docs/en/informix-servers/14.10?topic=client-sdk)
+- [Download from IBM Fix Central](https://www.ibm.com/support/fixcentral/) — search for
+  *Informix Client Software Development Kit*, and choose a **64-bit Windows** package. You need
+  an IBMid, and an account entitled to Informix downloads.
+
+The 64-bit part matters: IMS is a 64-bit process and cannot load a 32-bit ODBC driver, so a
+32-bit-only install will not work no matter how it is configured.
 
 ## Installing
 

@@ -114,6 +114,8 @@
 
 <p>IMS needs the <strong>IBM Informix Client SDK</strong> installed, with the 64-bit ODBC driver registered. The CSDK is not bundled — IMS assumes no rights to redistribute IBM client libraries — so it must be installed separately.</p>
 
+<p>You may already have it: the CSDK often arrives with Informix server tooling, and your DBA can say whether your organisation already licenses a copy. Otherwise IBM publishes <a href="https://www.ibm.com/docs/en/informix-servers/14.10?topic=client-sdk">installation documentation</a>, and the download is on <a href="https://www.ibm.com/support/fixcentral/">Fix Central</a> under <em>Informix Client Software Development Kit</em> — choose a 64-bit Windows package; an IBMid and an entitled account are required.</p>
+
 <p>If the SDK is missing or misconfigured, IMS says so at startup in a prerequisite window that explains what is wrong, rather than failing later as an unexplained connection error. <strong>Help &rarr; About IMS</strong> shows the detected SDK version, <code>INFORMIXDIR</code>, and ODBC driver name — the three values worth checking first when something will not connect.</p>
 
 <h2 id="connect">Connections</h2>
