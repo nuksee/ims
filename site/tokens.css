@@ -1,0 +1,119 @@
+/* Hallmark · tokens · theme: Cobalt (modern-minimal)
+ * Paper band: light (97%) · Display style: grotesk-sans · Accent hue: cool (255°)
+ * Every colour and font in index.html references a token from this file by name.
+ */
+
+:root {
+  /* ---- Colour · OKLCH, cool-tinted neutrals, one accent ---------------- */
+  --color-paper:      oklch(97.6% 0.004 255);
+  --color-paper-2:    oklch(95.2% 0.006 255);
+  --color-paper-3:    oklch(92.4% 0.008 255);
+  --color-rule:       oklch(87%   0.008 255);
+  --color-rule-firm:  oklch(72%   0.010 255);
+  --color-neutral:    oklch(58%   0.010 255);
+  --color-muted:      oklch(44%   0.012 255);
+  --color-ink:        oklch(21%   0.014 255);
+  --color-accent:     oklch(51%   0.191 255);
+  --color-accent-ink: oklch(98%   0.004 255);
+  --color-focus:      oklch(51%   0.191 255);
+
+  /* Caution register — the pilot gaps. Amber, kept low-chroma so it reads as
+     an instrument warning rather than a marketing badge. */
+  --color-warn-paper: oklch(96%   0.030  85);
+  --color-warn-rule:  oklch(80%   0.070  85);
+  --color-warn-ink:   oklch(38%   0.070  70);
+  --color-warn-code:  oklch(88%   0.045  85);
+
+  /* ---- Type · 3 families max (2+1 rule): display + body + mono outlier -- */
+  --font-display: "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-body:    "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+  --font-outlier: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+
+  /* ---- Scale · 1.25 major third ---------------------------------------- */
+  --text-xs:      0.75rem;
+  --text-sm:      0.8125rem;
+  --text-base:    1rem;
+  --text-md:      1.125rem;
+  --text-lg:      1.375rem;
+  --text-xl:      1.75rem;
+  --text-2xl:     2.25rem;
+  --text-3xl:     2.875rem;
+  --text-display:   clamp(2.5rem, 4.4vw + 0.75rem, 4.25rem);
+  --text-display-s: clamp(2rem,  3vw + 0.6rem,  3rem);
+
+  /* ---- Space · 4pt, nine steps ----------------------------------------- */
+  --space-3xs: 0.125rem;
+  --space-2xs: 0.25rem;
+  --space-xs:  0.5rem;
+  --space-sm:  0.75rem;
+  --space-md:  1rem;
+  --space-lg:  1.5rem;
+  --space-xl:  2.5rem;
+  --space-2xl: 4rem;
+  --space-3xl: 6rem;
+  --space-4xl: 9rem;
+
+  --page-gutter: clamp(1.125rem, 4vw, 2.5rem);
+  --measure:     68ch;
+
+  /* ---- Rules · Cobalt draws with a ruler ------------------------------- */
+  --rule-hair: 1px;
+  --rule-firm: 2px;
+
+  --radius-control: 6px;
+  --radius-card:    8px;
+
+  /* ---- Motion ---------------------------------------------------------- */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:     cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-micro:   120ms;
+  --dur-short:   220ms;
+
+  /* ---- Z scale --------------------------------------------------------- */
+  --z-base:   1;
+  --z-raised: 10;
+  --z-sticky: 200;
+}
+
+/* Dark: same anchor hue, lightness and chroma move only. Guarded so an
+   explicit light choice still wins over the system preference. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --color-paper:      oklch(15.5% 0.012 255);
+    --color-paper-2:    oklch(18.5% 0.014 255);
+    --color-paper-3:    oklch(22%   0.016 255);
+    --color-rule:       oklch(30%   0.014 255);
+    --color-rule-firm:  oklch(42%   0.016 255);
+    --color-neutral:    oklch(56%   0.012 255);
+    --color-muted:      oklch(72%   0.010 255);
+    --color-ink:        oklch(93.5% 0.006 255);
+    --color-accent:     oklch(70%   0.155 255);
+    --color-accent-ink: oklch(15%   0.014 255);
+    --color-focus:      oklch(70%   0.155 255);
+
+    --color-warn-paper: oklch(24%   0.038 85);
+    --color-warn-rule:  oklch(40%   0.060 85);
+    --color-warn-ink:   oklch(87%   0.058 85);
+    --color-warn-code:  oklch(34%   0.050 85);
+  }
+}
+
+:root[data-theme="dark"] {
+  --color-paper:      oklch(15.5% 0.012 255);
+  --color-paper-2:    oklch(18.5% 0.014 255);
+  --color-paper-3:    oklch(22%   0.016 255);
+  --color-rule:       oklch(30%   0.014 255);
+  --color-rule-firm:  oklch(42%   0.016 255);
+  --color-neutral:    oklch(56%   0.012 255);
+  --color-muted:      oklch(72%   0.010 255);
+  --color-ink:        oklch(93.5% 0.006 255);
+  --color-accent:     oklch(70%   0.155 255);
+  --color-accent-ink: oklch(15%   0.014 255);
+  --color-focus:      oklch(70%   0.155 255);
+
+  --color-warn-paper: oklch(24%   0.038 85);
+  --color-warn-rule:  oklch(40%   0.060 85);
+  --color-warn-ink:   oklch(87%   0.058 85);
+  --color-warn-code:  oklch(34%   0.050 85);
+}

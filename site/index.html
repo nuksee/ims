@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Informix Management Studio — a desktop client for IBM Informix</title>
+<meta name="description" content="A Windows desktop application for working with IBM Informix: connect to a server, browse its objects, and write and run SQL in one window.">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Informix Management Studio (IMS)">
+<meta property="og:description" content="What SQL Server Management Studio is for SQL Server. One window to connect, browse objects, and run SQL against IBM Informix.">
+<meta property="og:url" content="https://nuksee.github.io/ims/">
+<meta name="twitter:card" content="summary">
+
+<link rel="icon" href="img/ims-icon.png">
+<link rel="stylesheet" href="tokens.css">
+
+<style>
+/* Hallmark · genre: modern-minimal · macrostructure: Narrative Workflow
+ * theme: Cobalt · enrichment: none (typography only) · nav: N8 · footer: Ft4
+ * F4 Step-sequence knobs: numbering=1.0/2.0/3.0, layout=vertical stack, connector=line
+ * N8 knobs: prompt=$, cursor=after final flag, width=content
+ * Ft4 knobs: family=monospace, layout=single block, includes=licence+trademark
+ * tone: technical · audience: Informix DBAs and developers · use: download the pilot build
+ * pre-emit critique: P5 H5 E5 S5 R4 V5
+ * Every colour and font below references a token in tokens.css by name.
+ */
+
+/* ---- Fonts · self-hosted latin subsets, no external requests ----------- */
+@font-face {
+  font-family: "Space Grotesk"; font-style: normal; font-weight: 500;
+  font-display: swap; src: url("fonts/SpaceGrotesk-500-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Space Grotesk"; font-style: normal; font-weight: 700;
+  font-display: swap; src: url("fonts/SpaceGrotesk-700-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter Tight"; font-style: normal; font-weight: 400;
+  font-display: swap; src: url("fonts/InterTight-400-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Inter Tight"; font-style: normal; font-weight: 600;
+  font-display: swap; src: url("fonts/InterTight-600-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "JetBrains Mono"; font-style: normal; font-weight: 400;
+  font-display: swap; src: url("fonts/JetBrainsMono-400-latin.woff2") format("woff2");
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { overflow-x: clip; }
+body {
+  overflow-x: clip;
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-body);
+  font-weight: 400;
+  font-size: var(--text-base);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Grotesk display, roman only — no italic headers. */
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  margin: 0;
+}
+
+p { margin: 0; }
+
+code, .mono, kbd {
+  font-family: var(--font-outlier);
+  font-size: 0.875em;
+  font-variant-ligatures: none;
+}
+code {
+  background: var(--color-paper-3);
+  padding: 0.1em 0.4em;
+  border-radius: var(--radius-control);
+}
+kbd {
+  background: var(--color-paper-2);
+  border: var(--rule-hair) solid var(--color-rule);
+  border-radius: var(--radius-control);
+  padding: 0.1em 0.45em;
+  font-size: 0.8em;
+}
+
+a { color: var(--color-accent); }
+
+:focus-visible {
+  outline: var(--rule-firm) solid var(--color-focus);
+  outline-offset: 2px;
+  /* Never transitioned — the ring must appear instantly. */
+}
+
+.shell { max-width: 74rem; margin-inline: auto; padding-inline: var(--page-gutter); }
+
+/* =======================================================================
+   N8 · Terminal command nav. The links are command flags; the caret marks
+   where you would type next. This is the one place a caret is allowed.
+   ======================================================================= */
+.nav-term {
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+  background: var(--color-paper);
+}
+.nav-term__line {
+  font-family: var(--font-outlier);
+  font-size: var(--text-sm);
+  margin: 0;
+  padding-block: var(--space-md);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 0.75ch;
+}
+.nav-term__prompt { color: var(--color-accent); }
+.nav-term__cmd { font-weight: 400; color: var(--color-ink); }
+.nav-term__line a {
+  color: var(--color-muted);
+  text-decoration: none;
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+  white-space: nowrap;                 /* clickable text never wraps */
+  transition: color var(--dur-micro) var(--ease-out),
+              border-color var(--dur-micro) var(--ease-out);
+}
+.nav-term__line a:hover { color: var(--color-accent); border-bottom-color: var(--color-accent); }
+.nav-term__caret {
+  width: 1ch;
+  color: var(--color-accent);
+  animation: caret 1.05s steps(2) infinite;
+}
+@keyframes caret { 50% { opacity: 0; } }
+
+/* =======================================================================
+   Hero. Height of its content, left-biased, more than a sentence.
+   ======================================================================= */
+/* Gate 44a: bottom padding ≥ 1.3× the top, so the hero sits into the page's
+   rhythm rather than floating above it. 2.5rem top → 4rem bottom (1.6×). */
+.hero { padding-block: var(--space-xl) var(--space-2xl); }
+.hero__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+  gap: var(--space-xl) var(--space-2xl);
+  align-items: end;
+}
+.hero__display {
+  font-size: var(--text-display);
+  max-width: 22ch;
+}
+.hero__lede {
+  font-size: var(--text-md);
+  color: var(--color-muted);
+  max-width: 46ch;
+}
+.hero__lede strong { color: var(--color-ink); font-weight: 600; }
+
+.hero__actions {
+  margin-top: var(--space-xl);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-md) var(--space-lg);
+}
+
+/* Filled primary. Tight radius, ruler-drawn — Cobalt does not do pills. */
+.btn {
+  font-family: var(--font-body);
+  font-weight: 600;
+  font-size: var(--text-base);
+  text-decoration: none;
+  white-space: nowrap;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding-inline: var(--space-lg);
+  border-radius: var(--radius-control);
+  border: var(--rule-hair) solid var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+  transition: transform var(--dur-micro) var(--ease-out);
+}
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: translateY(0); }
+/* Eight-state discipline: the download link is never disabled in practice, but
+   the state is defined so a future build cannot ship it half-styled. */
+.btn:disabled, .btn[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  pointer-events: none;
+}
+
+/* C3 · Typographic link — a word, an arrow, a 1px underline. */
+.link-t {
+  font-weight: 600;
+  color: var(--color-ink);
+  text-decoration: none;
+  white-space: nowrap;
+  border-bottom: var(--rule-firm) solid var(--color-rule-firm);
+  padding-bottom: 1px;
+  transition: border-color var(--dur-micro) var(--ease-out);
+}
+.link-t:hover { border-bottom-color: var(--color-accent); }
+.link-t:active { border-bottom-color: var(--color-rule-firm); }
+.link-t[aria-disabled="true"] { opacity: 0.55; cursor: not-allowed; pointer-events: none; }
+
+.nav-term__line a:active { color: var(--color-ink); }
+
+.hero__meta {
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
+  color: var(--color-neutral);
+  letter-spacing: 0.01em;
+}
+
+/* Status strip — pilot state, stated where nobody can miss it. */
+.status {
+  border-block: var(--rule-hair) solid var(--color-rule);
+  background: var(--color-paper-2);
+  padding-block: var(--space-md);
+  font-family: var(--font-outlier);
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-lg);
+}
+.status b { color: var(--color-ink); font-weight: 400; }
+.status .dot { color: var(--color-accent); }
+
+/* =======================================================================
+   Sections. Deliberately uneven rhythm — no two padded the same.
+   ======================================================================= */
+.band { padding-block: var(--space-3xl); }
+.band--tight { padding-block: var(--space-2xl) var(--space-3xl); }
+.band--rule { border-top: var(--rule-hair) solid var(--color-rule); }
+
+.prose { max-width: var(--measure); }
+.prose > * + * { margin-top: var(--space-md); }
+.prose p { color: var(--color-muted); font-size: var(--text-md); }
+.prose strong { color: var(--color-ink); font-weight: 600; }
+
+.h-sec {
+  font-size: var(--text-2xl);
+  max-width: 30ch;
+  margin-bottom: var(--space-lg);
+}
+
+/* Real screenshot in a plain figure. No fake browser bar, no traffic-light
+   dots, no tilt — gate 47 forbids re-drawing chrome the OS already supplies. */
+.shot { margin: 0; }
+.shot img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: var(--rule-hair) solid var(--color-rule);
+  border-radius: var(--radius-card);
+  background: var(--color-paper-2);
+}
+.shot figcaption {
+  margin-top: var(--space-md);
+  font-size: var(--text-sm);
+  color: var(--color-neutral);
+  max-width: 62ch;
+}
+
+/* =======================================================================
+   F4 · Step sequence. The four v1 capabilities as the sequence they are.
+   Numbering 1.0/2.0/3.0, vertical, connected by a line.
+   ======================================================================= */
+.stages { list-style: none; margin: 0; padding: 0; }
+/* The numeral column is sized in ch of the mono face rather than a fixed rem,
+   and the gap scales, so the two-column form survives down to ~26rem instead
+   of imposing a 9rem floor that overflows a 320 px viewport. */
+.stage {
+  display: grid;
+  grid-template-columns: 4ch minmax(0, 1fr);
+  gap: 0 var(--space-lg);
+  padding-block: var(--space-xl);
+  border-top: var(--rule-hair) solid var(--color-rule);
+}
+.stage > * { min-width: 0; }
+.stage:last-child { border-bottom: var(--rule-hair) solid var(--color-rule); }
+
+.stage__no {
+  font-family: var(--font-outlier);
+  font-size: var(--text-lg);
+  color: var(--color-accent);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.stage--todo .stage__no { color: var(--color-neutral); }
+
+.stage__title { font-size: var(--text-xl); margin-bottom: var(--space-sm); }
+.stage__body { color: var(--color-muted); max-width: 60ch; }
+.stage__body + .stage__body { margin-top: var(--space-sm); }
+
+.stage__state {
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-neutral);
+  margin-top: var(--space-sm);
+  display: block;
+}
+.stage--todo .stage__title { color: var(--color-muted); }
+
+/* =======================================================================
+   Caveat block — the two pilot gaps. Amber instrument-warning register.
+   ======================================================================= */
+.caution {
+  background: var(--color-warn-paper);
+  border: var(--rule-hair) solid var(--color-warn-rule);
+  border-radius: var(--radius-card);
+  padding: var(--space-xl);
+  color: var(--color-warn-ink);
+  max-width: var(--measure);
+}
+.caution h2 { font-size: var(--text-lg); color: var(--color-warn-ink); margin-bottom: var(--space-md); }
+.caution dl { margin: 0; }
+.caution dt {
+  font-weight: 600;
+  font-family: var(--font-body);
+  margin-top: var(--space-md);
+}
+.caution dt:first-child { margin-top: 0; }
+.caution dd { margin: var(--space-2xs) 0 0; }
+.caution a { color: inherit; text-decoration-thickness: var(--rule-hair); text-underline-offset: 2px; }
+.caution code { background: var(--color-warn-code); }
+
+/* =======================================================================
+   F3-flavoured spec rows — prerequisites and diagnostics as a spec sheet,
+   not a card grid. Hairline rule per row, key/value.
+   ======================================================================= */
+.spec { border-top: var(--rule-firm) solid var(--color-rule-firm); }
+.spec__row {
+  display: grid;
+  grid-template-columns: minmax(0, 12rem) minmax(0, 1fr);
+  gap: var(--space-xs) var(--space-xl);
+  padding-block: var(--space-lg);
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+}
+.spec__row > * { min-width: 0; }
+.spec__key {
+  font-family: var(--font-outlier);
+  font-size: var(--text-sm);
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+.spec__val { color: var(--color-muted); }
+.spec__val a { text-decoration-thickness: var(--rule-hair); text-underline-offset: 2px; }
+
+pre {
+  font-family: var(--font-outlier);
+  font-size: var(--text-sm);
+  background: var(--color-paper-2);
+  border: var(--rule-hair) solid var(--color-rule);
+  border-radius: var(--radius-card);
+  padding: var(--space-md) var(--space-lg);
+  overflow-x: auto;                     /* the block scrolls, never the page */
+  margin: 0;
+  line-height: 1.7;
+}
+pre code { background: none; padding: 0; font-size: 1em; }
+.pre-label {
+  font-family: var(--font-outlier);
+  font-size: var(--text-xs);
+  color: var(--color-neutral);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: var(--space-xs);
+}
+
+/* =======================================================================
+   Ft4 · Dense colophon. Licence, trademark, and provenance as one
+   monospace block — a colophon, not a sitemap of links this site lacks.
+   ======================================================================= */
+.colophon {
+  border-top: var(--rule-firm) solid var(--color-rule-firm);
+  background: var(--color-paper-2);
+  padding-block: var(--space-2xl);
+}
+.colophon__text {
+  font-family: var(--font-outlier);
+  font-size: var(--text-sm);
+  line-height: 1.85;
+  color: var(--color-muted);
+  max-width: 78ch;
+}
+.colophon__text a { color: var(--color-ink); text-decoration-thickness: var(--rule-hair); text-underline-offset: 3px; }
+.colophon__text a:hover { color: var(--color-accent); }
+
+/* =======================================================================
+   Responsive. Verified at 320 / 375 / 414 / 768.
+   ======================================================================= */
+@media (max-width: 60rem) {
+  .hero__grid { grid-template-columns: minmax(0, 1fr); align-items: start; }
+  .hero__display { max-width: 26ch; }
+}
+@media (max-width: 48rem) {
+  .spec__row { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 40rem) {
+  .stage { grid-template-columns: minmax(0, 1fr); gap: var(--space-xs) 0; }
+  .stage__no { font-size: var(--text-md); }
+  .caution { padding: var(--space-lg); }
+  .btn { width: 100%; justify-content: center; }
+  .hero__actions { gap: var(--space-md); }
+  .band { padding-block: var(--space-2xl); }
+  .band--tight { padding-block: var(--space-xl); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 150ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 150ms !important;
+  }
+  .nav-term__caret { animation: none; opacity: 1; }
+}
+</style>
+</head>
+<body>
+
+<!-- N8 · Terminal command -->
+<header class="nav-term">
+  <nav class="shell" aria-label="Primary">
+    <p class="nav-term__line">
+      <span class="nav-term__prompt" aria-hidden="true">$</span><span class="nav-term__cmd">ims</span>
+      <a href="#stages">--capabilities</a>
+      <a href="#pilot">--known-gaps</a>
+      <a href="#requires">--prerequisites</a>
+      <a href="help/">--help</a>
+      <a href="https://github.com/nuksee/ims">--source</a>
+      <span class="nav-term__caret" aria-hidden="true">▮</span>
+    </p>
+  </nav>
+</header>
+
+<main>
+
+  <section class="hero shell">
+    <div class="hero__grid">
+      <div>
+        <h1 class="hero__display">A management studio for Informix.</h1>
+      </div>
+      <div>
+        <p class="hero__lede">
+          Connect to a server, browse its objects, and write and run SQL — in one window, on
+          Windows. <strong>IMS performs no administrative change of its own.</strong>
+        </p>
+      </div>
+    </div>
+
+    <div class="hero__actions">
+      <a class="btn" href="https://github.com/nuksee/ims/releases">Download the pilot build</a>
+      <a class="link-t" href="help/">Read the manual →</a>
+      <span class="hero__meta">Windows 10/11 x64 · no installer · no admin rights</span>
+    </div>
+  </section>
+
+  <div class="status shell">
+    <span><b>Status</b> pilot</span>
+    <span class="dot" aria-hidden="true">·</span>
+    <span><b>Tested against</b> Informix 14.10</span>
+    <span class="dot" aria-hidden="true">·</span>
+    <span><b>Licence</b> Apache-2.0</span>
+    <span class="dot" aria-hidden="true">·</span>
+    <span><b>Telemetry</b> none</span>
+  </div>
+
+  <section class="band--tight shell">
+    <div class="prose">
+      <h2 class="h-sec">Informix has no equivalent today.</h2>
+      <p>
+        SQL goes through <code>dbaccess</code>, object definitions through <code>dbschema</code>,
+        diagnostics through the <code>onstat</code> family. Generic JDBC clients treat Informix as a
+        lowest-common-denominator target.
+      </p>
+      <p>
+        Every statement IMS sends is one you typed or explicitly requested; it issues nothing on its
+        own initiative. What you may do is decided by your Informix privileges, not by IMS — it
+        grants no capability you do not already hold, and there is no shared or service account
+        behind it. It offers no way to kill a session: if one needs terminating, that is an
+        administrative action for whoever owns the server.
+      </p>
+      <p>
+        It emits no telemetry of any kind, enforced by a test that fails the build if a telemetry
+        package enters the dependency graph. <strong>Those constraints are what make it reasonable
+        to point IMS at a production server, and to hand it to a colleague.</strong>
+      </p>
+    </div>
+  </section>
+
+  <!-- F4 · Step sequence — the four v1 capabilities, in the order you meet them -->
+  <section class="band--tight shell">
+    <figure class="shot">
+      <img src="img/Screenshot01.png" width="1960" height="1221"
+           fetchpriority="high" decoding="async"
+           alt="The IMS main window: saved connections and the object tree on the left, a SQL editor with two query tabs above a result grid on the right, and a status bar reporting the Client SDK version and the connected server.">
+      <figcaption>
+        Connections and objects on the left, editor and results on the right. The status bar carries
+        the Client SDK version and what you are connected to.
+      </figcaption>
+    </figure>
+  </section>
+
+  <section class="band--tight shell" id="stages">
+    <h2 class="h-sec">Four capabilities, in the order you meet them.</h2>
+    <ol class="stages">
+
+      <li class="stage">
+        <span class="stage__no" aria-hidden="true">1.0</span>
+        <div>
+          <h3 class="stage__title">Connect.</h3>
+          <p class="stage__body">
+            A connection is described by its own settings rather than by the machine's
+            <code>sqlhosts</code>, so one that works on your workstation works the same on a
+            colleague's. Each is labelled Development, UAT or Production, shown beside it at all
+            times, so a production connection cannot be mistaken for another.
+          </p>
+          <p class="stage__body">
+            Passwords go to Windows Credential Manager — never a config file, never a log.
+          </p>
+          <span class="stage__state">Built · in use against a live instance</span>
+        </div>
+      </li>
+
+      <li class="stage">
+        <span class="stage__no" aria-hidden="true">2.0</span>
+        <div>
+          <h3 class="stage__title">Browse.</h3>
+          <p class="stage__body">
+            Tables, views, synonyms, sequences, procedures, functions and indexes, grouped by owner.
+            Nodes load their children on demand rather than reading the whole catalogue at connect
+            time, so opening a large schema does not stall. Selecting an object shows its
+            definition; for a view, that is the source Informix itself holds.
+          </p>
+          <span class="stage__state">Built · user-defined types not yet listed</span>
+        </div>
+      </li>
+
+      <li class="stage">
+        <span class="stage__no" aria-hidden="true">3.0</span>
+        <div>
+          <h3 class="stage__title">Query.</h3>
+          <p class="stage__body">
+            Informix SQL and SPL highlighting. Each tab holds one script with its own connection and
+            its own results, so a long query in one tab does not block work in another. Select text
+            and run to execute only the selection.
+          </p>
+          <p class="stage__body">
+            Rows are fetched in blocks rather than all at once, so a large result starts displaying
+            immediately. When a grid shows only part of a result it says so — a truncated grid is
+            never presented as a complete one.
+          </p>
+          <span class="stage__state">Built · <kbd>F5</kbd> runs · cancel is limited, see below</span>
+        </div>
+      </li>
+
+      <li class="stage stage--todo">
+        <span class="stage__no" aria-hidden="true">4.0</span>
+        <div>
+          <h3 class="stage__title">Monitor.</h3>
+          <p class="stage__body">
+            A read-only view drawn from <code>sysmaster</code> — sessions, what they are running, and
+            what they are waiting on. It answers “what is holding this up” without a shell on the
+            database host. Strictly read-only: IMS does not offer to kill a session.
+          </p>
+          <span class="stage__state">Not started · planned for v1, no code yet</span>
+        </div>
+      </li>
+
+    </ol>
+  </section>
+
+  <section class="band shell" id="pilot">
+    <div class="caution">
+      <h2>Two gaps to know before you rely on it</h2>
+      <dl>
+        <dt>Cancelling stops the waiting, not the statement.</dt>
+        <dd>
+          Measured against 14.10, the ODBC driver's cancel does not reach the server: the statement
+          runs to completion or to its timeout regardless. IMS stops <em>waiting</em> and returns the
+          window to you, and the session stays usable — but the server keeps working. A cancel frees
+          you, not the server, so bound an expensive query before you send it, with
+          <code>FIRST</code> or a restrictive <code>WHERE</code>, rather than relying on cancelling
+          it afterwards.
+        </dd>
+        <dt>User-defined types are missing from the object tree.</dt>
+        <dd>
+          Descoped rather than diagnosed. Everything else lists correctly.
+        </dd>
+      </dl>
+      <p style="margin-top: var(--space-lg)">
+        Unsupported, provided as-is, and not a replacement for the Informix CLI.
+        <a href="https://github.com/nuksee/ims/blob/main/docs/IMPLEMENTATION-TODO.md">IMPLEMENTATION-TODO.md</a>
+        records exactly what is and isn't built, item by item.
+      </p>
+    </div>
+  </section>
+
+  <section class="band--tight shell" id="requires">
+    <h2 class="h-sec">What it needs.</h2>
+    <div class="spec">
+      <div class="spec__row">
+        <div class="spec__key">Windows</div>
+        <div class="spec__val">10 or 11, 64-bit. The .NET runtime travels in the folder — no installer, no administrator rights.</div>
+      </div>
+      <div class="spec__row">
+        <div class="spec__key">Informix Client SDK</div>
+        <div class="spec__val">
+          Required but <strong>not bundled</strong> — IMS assumes no redistribution rights for IBM
+          client libraries. Needs <code>IBM INFORMIX ODBC DRIVER (64-bit)</code> registered;
+          developed against CSDK 4.10.FC1DE.
+          <a href="https://www.ibm.com/docs/en/informix-servers/14.10.0?topic=sdk-preparing-install-client">How to install it</a>
+          · <a href="https://www.ibm.com/support/fixcentral/">Fix Central</a> (search
+          <em>Informix Client Software Development Kit</em>; an IBMid and an entitled account are
+          required). If your organisation already runs Informix it often arrives with the server
+          tooling — your DBA can point you at the licensed copy, usually quicker than Fix Central.
+        </div>
+      </div>
+      <div class="spec__row">
+        <div class="spec__key">Informix server</div>
+        <div class="spec__val">
+          14.10, tested. 12.10 is untested rather than refused: IMS detects capabilities instead of
+          branching on version number, so it may work and should degrade rather than fail — treat it
+          as unsupported.
+        </div>
+      </div>
+      <div class="spec__row">
+        <div class="spec__key">If it will not connect</div>
+        <div class="spec__val">
+          Open <strong>Help → About IMS</strong>: it reports the detected SDK version,
+          <code>INFORMIXDIR</code>, and the ODBC driver name. An empty <code>INFORMIXDIR</code> means
+          the SDK is not installed for this account; <code>(none registered)</code> means the SDK is
+          there but its 64-bit driver is not — IMS is a 64-bit process and cannot load a 32-bit
+          driver. Error <code>-354</code> means the connection names no database, which the driver
+          permits and the server refuses. The <a href="help/">manual</a> covers the rest.
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band band--rule shell">
+    <h2 class="h-sec">Build it yourself.</h2>
+    <div class="prose" style="margin-bottom: var(--space-lg)">
+      <p>
+        Warnings are errors across every project, so a clean build is also the code-quality gate. No
+        test connects to an Informix instance.
+      </p>
+    </div>
+    <p class="pre-label">PowerShell</p>
+    <pre><code>dotnet restore ims.sln
+dotnet build   ims.sln --configuration Release
+dotnet test    ims.sln --configuration Release
+dotnet run     --project src/Ims.App</code></pre>
+    <div class="prose" style="margin-top: var(--space-lg)">
+      <p>
+        The <a href="https://github.com/nuksee/ims/blob/main/docs/PRD-Informix-Management-Studio.md">PRD</a>
+        carries the scope, the decisions and their rationale, and the requirement IDs that code
+        comments cite. Pilot testers should read
+        <a href="https://github.com/nuksee/ims/blob/main/docs/PILOT-INSTALL.md">PILOT-INSTALL.md</a>,
+        which is written for them rather than for a developer.
+      </p>
+    </div>
+  </section>
+
+</main>
+
+<!-- Ft4 · Dense colophon -->
+<footer class="colophon">
+  <div class="shell">
+    <p class="colophon__text">
+      Informix Management Studio · a solo, part-time build, worked in vertical slices ·
+      <a href="https://github.com/nuksee/ims">github.com/nuksee/ims</a> ·
+      <a href="https://github.com/nuksee/ims/issues">issues</a> ·
+      <a href="help/">manual</a> ·
+      <a href="https://github.com/nuksee/ims/releases">releases</a> ·
+      <a href="https://github.com/nuksee/ims/blob/main/LICENSE">Apache License 2.0</a>,
+      copyright 2026 Kaveh Shahbazi · Set in Space Grotesk, Inter Tight and JetBrains Mono,
+      self-hosted under the SIL Open Font License · The IBM Informix Client SDK is not covered by
+      that licence and is not redistributed here; it remains subject to IBM's own terms · Informix
+      is a trademark of IBM · This project is not affiliated with or endorsed by IBM · Unsupported
+      and provided as-is.
+    </p>
+  </div>
+</footer>
+
+</body>
+</html>

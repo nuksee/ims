@@ -1,0 +1,61 @@
+name: pages
+
+# Publishes site/ to GitHub Pages. The site is hand-written static HTML with no
+# build step and no external requests, so there is nothing to compile here: the
+# job uploads the directory as-is.
+#
+# One-time setup, done in the repo UI rather than here: Settings > Pages >
+# Source must be set to "GitHub Actions". Until that is done this workflow runs
+# green but deploys nothing.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'src/Ims.App/Resources/Help/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# A queued run supersedes an older one, but an in-flight deploy is left to
+# finish rather than cancelled half-applied.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Stage the in-app help as /help/
+        # The help page shipped inside the application is the same document the
+        # site serves at /help/, copied at deploy time rather than duplicated in
+        # site/ so the two cannot drift apart. It is self-contained HTML with no
+        # asset references, so a copy is all it needs.
+        run: |
+          mkdir -p site/help
+          cp src/Ims.App/Resources/Help/ims-help.html site/help/index.html
+
+      - name: Upload site
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
