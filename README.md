@@ -13,6 +13,10 @@ object browser, SQL editor with a usable result grid, and a read-only session mo
 typed or explicitly requested. Gating is done by Informix privileges, not by IMS. That single
 constraint is what makes it safe to point at production and safe to hand to a colleague.
 
+**[nuksee.github.io/ims](https://nuksee.github.io/ims/)** — what it is, what it needs, and a
+screenshot, for anyone you would rather not send to a source repository. The
+[manual](https://nuksee.github.io/ims/help/) is the same page IMS shows on <kbd>F1</kbd>.
+
 > **Status: pilot.** Three of the four v1 capabilities are built and in use against a live
 > 14.10 instance: connection management, the object browser, and the SQL editor with its
 > result grid. The **session monitor (Slice 3) is not started**, so "see what the server is
@@ -47,6 +51,7 @@ Releases are marked pre-release while the status above says pilot.
 
 | Document | What it is |
 |---|---|
+| [Manual](https://nuksee.github.io/ims/help/) | Connections, editor, results, keyboard, files and logs, troubleshooting. Served from [src/Ims.App/Resources/Help/ims-help.html](src/Ims.App/Resources/Help/ims-help.html), the same file <kbd>F1</kbd> opens in the application |
 | [PRD-Informix-Management-Studio.md](docs/PRD-Informix-Management-Studio.md) | Product requirements: scope, decisions and their rationale, requirement IDs, deferred backlog |
 | [IMPLEMENTATION-TODO.md](docs/IMPLEMENTATION-TODO.md) | Task list per slice, each traced back to a PRD requirement ID |
 
@@ -146,7 +151,12 @@ tests/
 tools/
   Ims.SmokeTest        Slice 0 provider spike, needs a live server
 docs/                  PRD and implementation to-do
+site/                  The public page, deployed to GitHub Pages
 ```
+
+`site/` is plain HTML with no build step: `.github/workflows/pages.yml` publishes it on push to
+`main`, and copies the in-app help to `/help/` at deploy time rather than keeping a second copy
+in the repository, so the published manual cannot drift from the one the application ships.
 
 `Ims.Core` deliberately stays free of any Windows dependency so a later cross-platform client is
 not precluded. `Ims.App` supplies the UI-thread detector that `ServerCallGuard` uses to throw
