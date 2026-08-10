@@ -45,11 +45,13 @@ jobs:
       - name: Stage the in-app help as /help/
         # The help page shipped inside the application is the same document the
         # site serves at /help/, copied at deploy time rather than duplicated in
-        # site/ so the two cannot drift apart. It is self-contained HTML with no
-        # asset references, so a copy is all it needs.
+        # site/ so the two cannot drift apart. Its screenshots come along: the
+        # html references them by relative path, so img/ has to sit beside it
+        # here exactly as it does beside the exe.
         run: |
           mkdir -p site/help
           cp src/Ims.App/Resources/Help/ims-help.html site/help/index.html
+          cp -R src/Ims.App/Resources/Help/img site/help/img
 
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
