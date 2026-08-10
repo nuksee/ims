@@ -167,7 +167,25 @@
 
 <p>Selecting text and running executes only the selection. That is the usual way to run one statement out of a longer script.</p>
 
-<p>The toolbar above the tabs carries the same actions, so none of them depends on knowing its key. It shows which instance the current tab runs against, and everything that needs a connection stays greyed out until there is one. While a statement is running, <strong>Execute</strong> becomes <strong>Cancel</strong> in place.</p>
+<h3>The query toolbar</h3>
+
+<p>The strip above the tabs carries every query action, so none of them depends on knowing its key or finding it in a menu. Left to right:</p>
+
+<table>
+  <tr><th>Item</th><th>What it does</th></tr>
+  <tr><td>Connection target</td><td>Which instance the current tab runs against, as plain text at the left end. It reads <strong>Not connected</strong> when the tab has no connection.</td></tr>
+  <tr><td>Connect / Disconnect</td><td>The two plug buttons. Connect opens the connection dialog for this tab; disconnect closes its connection.</td></tr>
+  <tr><td>New, Open, Save</td><td>A new query tab, open a <code>.sql</code> file, save this tab.</td></tr>
+  <tr><td>Execute</td><td>Runs the script, or the selection if there is one. Becomes <strong>Cancel</strong> in place while a statement runs, in the same spot, so the strip does not shuffle under the cursor.</td></tr>
+  <tr><td>Run selection</td><td>Runs only the selected text.</td></tr>
+  <tr><td>Commit, Roll back</td><td>Ends the current transaction one way or the other.</td></tr>
+  <tr><td>Complete word</td><td>Completes the word being typed in the editor.</td></tr>
+  <tr><td>Clear results</td><td>Drops the result tabs and messages this tab is holding.</td></tr>
+  <tr><td>Export, Copy</td><td>The current result to a CSV file, or the selected cells to the clipboard.</td></tr>
+  <tr><td>History, Help</td><td>The statements this session has run, and this file.</td></tr>
+</table>
+
+<p>Everything that needs a connection stays greyed out until there is one — on a tab reading <strong>Not connected</strong>, only new/open/save, connect and help are live. Each button drives the same command as its menu entry, so the menu and the toolbar cannot disagree about what an action does.</p>
 
 <div class="note">
   <p><strong>Cancelling stops the waiting, not the statement.</strong> Measured against Informix 14.10, the ODBC driver's cancel does not reach the server: the statement runs to completion or to its timeout regardless. IMS therefore stops <em>waiting</em> for the result and returns the window to you, and the session stays usable — but the server keeps working until the statement finishes on its own.</p>
@@ -177,6 +195,8 @@
 <h2 id="results">Results</h2>
 
 <p>Each statement that returns rows gets its own result tab, labelled by the statement it came from. Rows are fetched in blocks rather than all at once, so a large result starts displaying immediately; <strong>Fetch more rows</strong> continues it. When a grid is showing only part of a result, it says so — a truncated grid is never presented as a complete one.</p>
+
+<p><strong>Export to CSV</strong> writes the current result to a file. Both it and <strong>Copy</strong> are on the toolbar as well as the Results menu.</p>
 
 <p><strong>Copy selection</strong> puts the selected cells on the clipboard, tab-separated, so they paste into a spreadsheet with columns intact.</p>
 
