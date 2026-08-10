@@ -59,10 +59,17 @@ PRD — if a piece of code looks over-constrained, the reason is there.
 - **.NET SDK 9.0.311** or a later 9.0 feature band (pinned in [global.json](global.json))
 - **IBM Informix Client SDK**, with the `IBM INFORMIX ODBC DRIVER (64-bit)` registered.
   Developed against CSDK 4.10.FC1DE.
+  ([what it is and how to install it](https://www.ibm.com/docs/en/informix-servers/14.10.0?topic=sdk-preparing-install-client)
+  · [download from Fix Central](https://www.ibm.com/support/fixcentral/) — search for
+  *Informix Client Software Development Kit*; an IBMid and an entitled account are required)
 
 The CSDK is **required but not bundled** — IMS assumes no redistribution rights for IBM client
 libraries, so it must be installed separately. A build and the full test suite run fine without
 it; only actually talking to a server needs it.
+
+If your organisation already runs Informix it is often installed with the server tooling, or
+your DBA can point you at the copy already licensed — usually quicker than going through Fix
+Central yourself.
 
 ## Build and test
 
