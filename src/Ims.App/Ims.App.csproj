@@ -81,6 +81,12 @@
     <Content Include="Resources\Help\ims-help.html">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+
+    <!-- Screenshots the help references by relative path. Same reasoning: on disk
+         beside the html, or the browser shows a broken image. -->
+    <Content Include="Resources\Help\img\**\*.png">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
   </ItemGroup>
 
   <ItemGroup>

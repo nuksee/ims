@@ -74,6 +74,10 @@
     padding: 10px 14px; border-radius: 5px; margin: 16px 0;
   }
   .note p { margin: 4px 0; }
+  figure { margin: 16px 0; }
+  figure img { display: block; max-width: 100%; height: auto;
+               border: 1px solid var(--rule); border-radius: 4px; background: #fff; }
+  figcaption { color: var(--muted); font-size: 13px; margin-top: 6px; }
   a { color: var(--accent); }
   footer { margin-top: 44px; padding-top: 14px; border-top: 1px solid var(--rule);
            color: var(--muted); font-size: 13px; }
@@ -169,7 +173,15 @@
 
 <h3>The query toolbar</h3>
 
-<p>The strip above the tabs carries every query action, so none of them depends on knowing its key or finding it in a menu. Left to right:</p>
+<p>The strip above the tabs carries every query action, so none of them depends on knowing its key or finding it in a menu.</p>
+
+<figure>
+  <img src="img/toolbar.png"
+       alt="The query toolbar. From the left: the text &quot;Not connected&quot;, connect and disconnect, new, open and save, a greyed-out Execute and run-selection, a greyed-out Commit and Roll back, complete word, clear results, export and copy, then history and help.">
+  <figcaption>The toolbar on a tab with no connection — everything needing a server is greyed out.</figcaption>
+</figure>
+
+<p>Left to right:</p>
 
 <table>
   <tr><th>Item</th><th>What it does</th></tr>
