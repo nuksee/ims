@@ -33,30 +33,22 @@ public sealed partial class ObjectTreeViewModel : ObservableObject, IAsyncDispos
         _catalog = catalog;
 
         Roots = BuildFolders();
-        Detail = new TableDetailViewModel(catalog);
     }
 
     public ConnectionDescriptor Descriptor { get; }
 
-    /// <summary>The detail pane for whatever is selected (PR-2.4).</summary>
-    public TableDetailViewModel Detail { get; }
-
     /// <summary>
-    /// True while the detail pane is on screen.
+    /// The reader this tree was opened with, for anything else that needs the
+    /// same connection.
     /// </summary>
     /// <remarks>
-    /// Detail is only fetched when this is set. PR-6.4 keeps metadata queries
-    /// negligible on a production instance, and arrowing through 500 tables should
-    /// not issue 500 rounds of six catalogue queries because a hidden pane was
-    /// keeping up.
+    /// Detail tabs (<see cref="ObjectDetailTabViewModel"/>) read through this rather
+    /// than opening their own. An Informix connection has one cursor, so a second
+    /// reader would have the two closing each other's results — and a second session
+    /// per instance is exactly the cost PR-6.4 asks IMS not to add. It is already
+    /// serialized: see <c>MainViewModel.OpenObjectTreeAsync</c>.
     /// </remarks>
-    public bool IsDetailVisible { get; set; }
-
-    /// <summary>Loads detail for the current selection, if the pane is showing.</summary>
-    public Task RefreshDetailAsync(CancellationToken cancellationToken) =>
-        IsDetailVisible
-            ? Detail.ShowAsync(SelectedObject, cancellationToken)
-            : Task.CompletedTask;
+    public ICatalogReader Catalog => _catalog;
 
     /// <summary>
     /// The folders, one per object kind (PR-2.1).
@@ -187,8 +179,6 @@ public sealed partial class ObjectTreeViewModel : ObservableObject, IAsyncDispos
         OnPropertyChanged(nameof(CanSelectRows));
         OnPropertyChanged(nameof(HasSelectedObject));
         OnPropertyChanged(nameof(CanScriptSelection));
-
-        _ = RefreshDetailAsync(CancellationToken.None);
     }
 
     partial void OnIncludeSystemObjectsChanged(bool value) =>

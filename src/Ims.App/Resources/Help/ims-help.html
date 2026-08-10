@@ -142,7 +142,15 @@
 
 <p>The tree on the left lists the objects in the connected database — tables, views, indexes, procedures — grouped by owner. Expanding a node loads its children on demand rather than reading the whole catalogue at connect time, so opening a large schema does not stall.</p>
 
-<p>Right-click a node for the actions available on it, including refreshing a single node when you have changed something outside IMS. Selecting an object shows its definition; for a view, that is the source Informix itself holds.</p>
+<p>Right-click a node for the actions available on it, including refreshing a single node when you have changed something outside IMS.</p>
+
+<h3>Object detail</h3>
+
+<p>Right-click a table or a view and choose <strong>Show detail</strong>. It opens in a tab of its own, alongside your query tabs, showing the columns and their types, the indexes, the constraints, the triggers, and how the object is stored — its dbspace, lock mode, extent sizing and fragmentation. Terms particular to Informix carry an explanation on their tooltip, and the panel at the foot of the tab lists the exact catalogue queries IMS ran to fill it.</p>
+
+<p>Each object gets its own tab, so you can open two tables and switch between them to compare. Asking for detail on an object that is already open returns you to its tab rather than opening a second one. Close a detail tab as you would any other — the <strong>✕</strong> on the tab, or a middle-click on it.</p>
+
+<p>Detail is read once, when you open the tab. Moving around the tree afterwards does not re-read it, so browsing a large schema costs nothing on the server.</p>
 
 <h2 id="sql">SQL editor</h2>
 

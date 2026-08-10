@@ -28,6 +28,150 @@
     <local:EnvironmentBrushConverter x:Key="EnvironmentBrush" />
     <local:TransactionStateConverter x:Key="TransactionText" />
     <local:StatementOutcomeConverter x:Key="OutcomeText" />
+
+    <!--
+      Object detail (PR-2.4), shown in the tab strip beside the editors rather than
+      in the results area below. Results and Messages describe the statement in the
+      editor; an object's detail is not output of anything, it is a document of its
+      own, so it is a tab of its own.
+
+      Bound to a TableDetailViewModel, not to the ObjectDetailTabViewModel that owns
+      it â€” the host sets Content to the inner view model, which is why every binding
+      in here reads the same as it did as a TabItem.
+
+      Every Informix-specific term carries its explanation on the tooltip (NFR-11):
+      U2 will not know what a dbspace is.
+    -->
+    <DataTemplate x:Key="ObjectDetailTemplate" DataType="{x:Type vm:TableDetailViewModel}">
+      <Grid>
+        <TextBlock Text="Loadingâ€¦"
+                   Foreground="#FF5F6368" Margin="10"
+                   Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}" />
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto"
+                      Visibility="{Binding HasDetail, Converter={StaticResource BoolToVisibility}}">
+          <StackPanel Margin="10">
+
+            <TextBlock Text="{Binding Title}" Style="{StaticResource HeadingText}" />
+
+            <TextBlock Text="{Binding StorageSummary}" Margin="0,6,0,0"
+                       TextWrapping="Wrap" Foreground="#FF3C4043" />
+
+            <TextBlock Text="{Binding StatisticsSummary}" Margin="0,4,0,10"
+                       TextWrapping="Wrap" Foreground="#FF3C4043"
+                       ToolTip="{x:Static vm:InformixConcepts.Statistics}" />
+
+            <Expander Header="Columns" IsExpanded="True" Margin="0,0,0,8">
+              <DataGrid ItemsSource="{Binding Detail.Columns}"
+                        AutoGenerateColumns="False" IsReadOnly="True"
+                        HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                        MaxHeight="320" FontFamily="Consolas" FontSize="12">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="#" Binding="{Binding Position}" Width="40" />
+                  <DataGridTextColumn Header="Column" Binding="{Binding Name}" Width="200" />
+                  <DataGridTextColumn Header="Type" Binding="{Binding TypeDescription}" Width="200" />
+                  <DataGridCheckBoxColumn Header="Null?" Binding="{Binding IsNullable}" Width="55" />
+                  <DataGridTextColumn Header="Default" Binding="{Binding DefaultValue}" Width="120" />
+                  <!-- PR-8.2: the catalogue's own encoding, on show. -->
+                  <DataGridTextColumn Header="coltype" Binding="{Binding RawColType}" Width="65" />
+                  <DataGridTextColumn Header="collength" Binding="{Binding RawColLength}" Width="75" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </Expander>
+
+            <Expander Header="Indexes" IsExpanded="True" Margin="0,0,0,8">
+              <DataGrid ItemsSource="{Binding Detail.Indexes}"
+                        AutoGenerateColumns="False" IsReadOnly="True"
+                        HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                        MaxHeight="200" FontFamily="Consolas" FontSize="12">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Index" Binding="{Binding Name}" Width="200" />
+                  <DataGridCheckBoxColumn Header="Unique" Binding="{Binding IsUnique}" Width="60" />
+                  <DataGridCheckBoxColumn Header="Clustered" Binding="{Binding IsClustered}" Width="70" />
+                  <DataGridCheckBoxColumn Header="Constraint" Binding="{Binding BacksConstraint}" Width="75" />
+                  <DataGridTextColumn Header="Key"
+                                      Binding="{Binding Columns, Converter={StaticResource JoinList}}"
+                                      Width="*" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </Expander>
+
+            <Expander Header="Constraints" IsExpanded="True" Margin="0,0,0,8">
+              <DataGrid ItemsSource="{Binding Detail.Constraints}"
+                        AutoGenerateColumns="False" IsReadOnly="True"
+                        HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                        MaxHeight="200" FontFamily="Consolas" FontSize="12">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Constraint" Binding="{Binding Name}" Width="200" />
+                  <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="90" />
+                  <DataGridTextColumn Header="Columns"
+                                      Binding="{Binding Columns, Converter={StaticResource JoinList}}"
+                                      Width="200" />
+                  <DataGridTextColumn Header="References" Binding="{Binding ReferencedTable}" Width="150" />
+                  <DataGridTextColumn Header="Check" Binding="{Binding CheckExpression}" Width="*" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </Expander>
+
+            <Expander Header="Triggers" Margin="0,0,0,8">
+              <DataGrid ItemsSource="{Binding Detail.Triggers}"
+                        AutoGenerateColumns="False" IsReadOnly="True"
+                        HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                        MaxHeight="150" FontFamily="Consolas" FontSize="12">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Trigger" Binding="{Binding Name}" Width="220" />
+                  <DataGridTextColumn Header="Owner" Binding="{Binding Owner}" Width="120" />
+                  <DataGridTextColumn Header="Event" Binding="{Binding Event}" Width="*" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </Expander>
+
+            <Expander Header="Storage and fragmentation" Margin="0,0,0,8"
+                      ToolTip="{x:Static vm:InformixConcepts.Fragmentation}">
+              <DataGrid ItemsSource="{Binding Detail.Fragments}"
+                        AutoGenerateColumns="False" IsReadOnly="True"
+                        HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                        MaxHeight="180" FontFamily="Consolas" FontSize="12">
+                <DataGrid.Columns>
+                  <DataGridTextColumn Header="Strategy" Binding="{Binding Strategy}" Width="110" />
+                  <DataGridTextColumn Header="Dbspace" Binding="{Binding DbSpace}" Width="150" />
+                  <DataGridTextColumn Header="Expression" Binding="{Binding Expression}" Width="*" />
+                </DataGrid.Columns>
+              </DataGrid>
+            </Expander>
+
+            <Expander Header="What these Informix terms mean" Margin="0,0,0,8">
+              <StackPanel Margin="6">
+                <TextBlock Text="Dbspace" FontWeight="SemiBold" Margin="0,4,0,0" />
+                <TextBlock Text="{x:Static vm:InformixConcepts.DbSpace}" TextWrapping="Wrap" />
+                <TextBlock Text="Extent" FontWeight="SemiBold" Margin="0,8,0,0" />
+                <TextBlock Text="{x:Static vm:InformixConcepts.Extent}" TextWrapping="Wrap" />
+                <TextBlock Text="Fragmentation" FontWeight="SemiBold" Margin="0,8,0,0" />
+                <TextBlock Text="{x:Static vm:InformixConcepts.Fragmentation}" TextWrapping="Wrap" />
+                <TextBlock Text="Lock mode" FontWeight="SemiBold" Margin="0,8,0,0" />
+                <TextBlock Text="{x:Static vm:InformixConcepts.LockMode}" TextWrapping="Wrap" />
+                <TextBlock Text="Statistics" FontWeight="SemiBold" Margin="0,8,0,0" />
+                <TextBlock Text="{x:Static vm:InformixConcepts.Statistics}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Expander>
+
+            <!-- PR-8.2 / PR-8.3: exactly what IMS asked the server. -->
+            <Expander Header="Catalogue queries behind this pane" Margin="0,0,0,8">
+              <TextBox Text="{Binding QueriesUsed, Mode=OneWay}"
+                       IsReadOnly="True" AcceptsReturn="True"
+                       FontFamily="Consolas" FontSize="11"
+                       MaxHeight="240"
+                       VerticalScrollBarVisibility="Auto"
+                       HorizontalScrollBarVisibility="Auto" />
+            </Expander>
+
+          </StackPanel>
+        </ScrollViewer>
+
+        <TextBlock Text="{Binding Error}" Foreground="#FFB3261E" Margin="10"
+                   TextWrapping="Wrap" VerticalAlignment="Top" />
+      </Grid>
+    </DataTemplate>
   </Window.Resources>
 
   <!--
@@ -36,7 +180,7 @@
 
     These are RoutedUICommands declared in code-behind, not {Binding} to view-model
     commands. The first attempt bound to ExecuteCommand on the window's DataContext,
-    which is MainViewModel — but that command lives on EditorTabViewModel, so the
+    which is MainViewModel â€” but that command lives on EditorTabViewModel, so the
     binding silently resolved to nothing and F5 did exactly that. A routed command
     also reaches the handler when focus is inside the editor, which a KeyBinding on
     the window does not reliably do.
@@ -47,9 +191,9 @@
     <Menu DockPanel.Dock="Top">
       <MenuItem Header="_File">
         <MenuItem Header="_New query" Command="{x:Static local:MainWindow.NewQueryCommand}" />
-        <MenuItem Header="_Open…" Command="{x:Static local:MainWindow.OpenFileCommand}" />
+        <MenuItem Header="_Openâ€¦" Command="{x:Static local:MainWindow.OpenFileCommand}" />
         <MenuItem Header="_Save" Command="{x:Static local:MainWindow.SaveFileCommand}" />
-        <MenuItem Header="Save _as…" Click="OnSaveFileAs" />
+        <MenuItem Header="Save _asâ€¦" Click="OnSaveFileAs" />
         <Separator />
         <MenuItem Header="E_xit" Click="OnExit" />
       </MenuItem>
@@ -65,15 +209,15 @@
         <MenuItem Header="Roll back" Click="OnRollback" />
       </MenuItem>
       <MenuItem Header="_Connection">
-        <MenuItem Header="_New connection…" Click="OnNewConnection" />
-        <MenuItem Header="_Edit selected…" Click="OnEditConnection" />
+        <MenuItem Header="_New connectionâ€¦" Click="OnNewConnection" />
+        <MenuItem Header="_Edit selectedâ€¦" Click="OnEditConnection" />
         <MenuItem Header="_Remove selected" Click="OnRemoveConnection" />
       </MenuItem>
       <MenuItem Header="_Results">
-        <MenuItem Header="Export to _CSV…" Click="OnExportCsv" />
-        <MenuItem Header="Export to _tab-delimited…" Click="OnExportTsv" />
-        <MenuItem Header="Export to _JSON…" Click="OnExportJson" />
-        <MenuItem Header="Export to _Excel…" Click="OnExportExcel" />
+        <MenuItem Header="Export to _CSVâ€¦" Click="OnExportCsv" />
+        <MenuItem Header="Export to _tab-delimitedâ€¦" Click="OnExportTsv" />
+        <MenuItem Header="Export to _JSONâ€¦" Click="OnExportJson" />
+        <MenuItem Header="Export to _Excelâ€¦" Click="OnExportExcel" />
         <Separator />
         <MenuItem Header="Copy selection" Click="OnCopySelection" />
         <MenuItem Header="Fetch more rows" Click="OnFetchMore" />
@@ -81,7 +225,7 @@
       <MenuItem Header="_Help">
         <MenuItem Header="_Contents" Command="{x:Static local:MainWindow.HelpContentsCommand}" />
         <Separator />
-        <MenuItem Header="Query _history…" Click="OnShowHistory" />
+        <MenuItem Header="Query _historyâ€¦" Click="OnShowHistory" />
         <MenuItem Header="_About IMS" Click="OnAbout" />
       </MenuItem>
     </Menu>
@@ -152,7 +296,7 @@
                                      RelativeSource={RelativeSource Self},
                                      Converter={StaticResource BoolToVisibility}}" />
               <Separator />
-              <MenuItem Header="_Edit…" Click="OnEditConnection" />
+              <MenuItem Header="_Editâ€¦" Click="OnEditConnection" />
               <MenuItem Header="_Remove" Click="OnRemoveConnection" />
             </ContextMenu>
           </ListBox.Resources>
@@ -198,7 +342,7 @@
                 </Border>
 
                 <!-- A database and host name runs long, and as one unwrapped line it
-                     set the whole row's width — widening the item past the list's
+                     set the whole row's width â€” widening the item past the list's
                      viewport and carrying the badge in column 1 off the right edge
                      with it. Elided, so the row is only ever as wide as the list. -->
                 <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
@@ -236,7 +380,7 @@
                    IsEnabled="{Binding ObjectTree, Converter={StaticResource NotNullToBool}}"
                    AutomationProperties.Name="Filter objects by name" />
 
-          <Button Grid.Column="1" Content="⟳" Margin="4,0,0,0" Padding="7,2"
+          <Button Grid.Column="1" Content="âŸ³" Margin="4,0,0,0" Padding="7,2"
                   ToolTip="Refresh the selected node"
                   Click="OnRefreshTreeNode"
                   AutomationProperties.Name="Refresh" />
@@ -288,7 +432,7 @@
                         Click="OnCopyQualifiedName"
                         IsEnabled="{Binding ObjectTree.HasSelectedObject, FallbackValue=False}" />
               <Separator />
-              <MenuItem Header="Show the catalogue _query…" Click="OnShowCatalogQuery" />
+              <MenuItem Header="Show the catalogue _queryâ€¦" Click="OnShowCatalogQuery" />
               <MenuItem Header="_Refresh" Click="OnRefreshTreeNode" />
             </ContextMenu>
           </TreeView.ContextMenu>
@@ -299,7 +443,7 @@
               <StackPanel Orientation="Horizontal">
                 <TextBlock Text="{Binding Glyph}" Margin="0,0,5,0" />
                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-                <TextBlock Text="  (loading…)" Foreground="#FF5F6368"
+                <TextBlock Text="  (loadingâ€¦)" Foreground="#FF5F6368"
                            Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}" />
               </StackPanel>
             </HierarchicalDataTemplate>
@@ -338,7 +482,7 @@
         <!--
           One row that scrolls, rather than WPF's default of wrapping onto extra rows.
           TabPanel wraps once the headers no longer fit, but this strip is a fixed 26px
-          — so the second row was drawn outside it and those tabs became unreachable.
+          â€” so the second row was drawn outside it and those tabs became unreachable.
           Growing instead would be worse: the strip would eat the editor a row at a
           time, and tabs would jump between rows as the selected one is promoted.
 
@@ -348,7 +492,7 @@
 
           The scrollbar itself is hidden rather than Auto. A visible horizontal bar is
           laid out *inside* the scroller, so it took ~17 of the strip's 26px the moment
-          the tabs overflowed — leaving the headers a few pixels tall and looking cut
+          the tabs overflowed â€” leaving the headers a few pixels tall and looking cut
           off, which is the clipping this was supposed to have fixed. Scrolling is
           driven by the mouse wheel over the strip and by keeping the selected tab in
           view (see MainWindow.xaml.cs), so nothing is lost by not drawing the bar.
@@ -356,7 +500,7 @@
           The height is 30 rather than the old 26. WPF promotes the selected tab a
           couple of pixels past the others, so a header measures ~2px taller than the
           plain ones and 26 cut its bottom edge. Dropping the height and letting the
-          row measure is not the answer — a ScrollViewer does not pass its content's
+          row measure is not the answer â€” a ScrollViewer does not pass its content's
           desired height up, so the strip collapsed to 20px instead.
         -->
         <TabControl x:Name="TabHeaders" Grid.Row="0"
@@ -391,7 +535,7 @@
             item template so the whole header is the target: aiming at the label is
             not how anyone middle-clicks a tab.
 
-            It is an addition to the ✕ button, never a replacement — NFR-8 needs a
+            It is an addition to the âœ• button, never a replacement â€” NFR-8 needs a
             way to close a tab that does not require a three-button mouse.
           -->
           <TabControl.ItemContainerStyle>
@@ -408,10 +552,10 @@
                 <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
                            MaxWidth="180" TextTrimming="CharacterEllipsis"
                            ToolTip="{Binding Title}" />
-                <Button Content="✕" Margin="6,0,0,0" Padding="3,0" FontSize="10"
+                <Button Content="âœ•" Margin="6,0,0,0" Padding="3,0" FontSize="10"
                         BorderThickness="0" Background="Transparent"
                         Click="OnCloseTab"
-                        ToolTip="Close this tab — or middle-click the tab"
+                        ToolTip="Close this tab â€” or middle-click the tab"
                         AutomationProperties.Name="Close tab" />
               </StackPanel>
             </DataTemplate>
@@ -421,50 +565,66 @@
           </TabControl.ContentTemplate>
         </TabControl>
 
-        <DockPanel Grid.Row="1">
-          <!--
-            Shown when a cancel freed the editor without stopping the statement, which
-            is what this ODBC driver actually does (PR-3.5, measured). It sits above
-            the editor rather than in the status bar because the status bar is
-            transient and this has to survive the moment: the user's query is still
-            consuming server CPU and the way to stop it is in this text.
+        <!--
+          Row 1 is whichever document the selected tab is: the shared editor, or an
+          object's detail. They are siblings toggled from code-behind rather than a
+          ContentTemplate on the strip above, because that strip deliberately renders
+          no content â€” see the comments on TabHeaders. One AvalonEdit serves every
+          editor tab and it has to stay outside.
+        -->
+        <Grid Grid.Row="1">
+          <DockPanel x:Name="EditorHost">
+            <!--
+              Shown when a cancel freed the editor without stopping the statement, which
+              is what this ODBC driver actually does (PR-3.5, measured). It sits above
+              the editor rather than in the status bar because the status bar is
+              transient and this has to survive the moment: the user's query is still
+              consuming server CPU and the way to stop it is in this text.
 
-            Not colour-alone (NFR-8): the wording carries the meaning and the ⚠ gives
-            it a shape, so the amber is decoration rather than the signal.
-          -->
-          <Border DockPanel.Dock="Top"
-                  Background="#FFFFF4CE" BorderBrush="#FFE0C060" BorderThickness="0,0,0,1"
-                  Padding="8,5"
-                  Visibility="{Binding SelectedTab.CancelNotice,
-                               Converter={StaticResource NotNullToVisibility}}">
-            <DockPanel>
-              <TextBlock DockPanel.Dock="Left" Text="⚠" FontSize="14" Margin="0,0,8,0"
-                         VerticalAlignment="Top" />
-              <Button DockPanel.Dock="Right" Content="✕" Padding="4,0" FontSize="10"
-                      BorderThickness="0" Background="Transparent"
-                      VerticalAlignment="Top"
-                      Click="OnDismissCancelNotice"
-                      ToolTip="Dismiss"
-                      AutomationProperties.Name="Dismiss the cancellation notice" />
-              <TextBlock Text="{Binding SelectedTab.CancelNotice}"
-                         TextWrapping="Wrap"
-                         AutomationProperties.Name="Cancellation notice" />
-            </DockPanel>
-          </Border>
+              Not colour-alone (NFR-8): the wording carries the meaning and the âš  gives
+              it a shape, so the amber is decoration rather than the signal.
+            -->
+            <Border DockPanel.Dock="Top"
+                    Background="#FFFFF4CE" BorderBrush="#FFE0C060" BorderThickness="0,0,0,1"
+                    Padding="8,5"
+                    Visibility="{Binding SelectedTab.CancelNotice,
+                                 Converter={StaticResource NotNullToVisibility}}">
+              <DockPanel>
+                <TextBlock DockPanel.Dock="Left" Text="âš " FontSize="14" Margin="0,0,8,0"
+                           VerticalAlignment="Top" />
+                <Button DockPanel.Dock="Right" Content="âœ•" Padding="4,0" FontSize="10"
+                        BorderThickness="0" Background="Transparent"
+                        VerticalAlignment="Top"
+                        Click="OnDismissCancelNotice"
+                        ToolTip="Dismiss"
+                        AutomationProperties.Name="Dismiss the cancellation notice" />
+                <TextBlock Text="{Binding SelectedTab.CancelNotice}"
+                           TextWrapping="Wrap"
+                           AutomationProperties.Name="Cancellation notice" />
+              </DockPanel>
+            </Border>
 
-          <avalonEdit:TextEditor x:Name="Editor"
-                                 FontFamily="Consolas" FontSize="13"
-                                 ShowLineNumbers="True"
-                                 WordWrap="False"
-                                 HorizontalScrollBarVisibility="Auto"
-                                 VerticalScrollBarVisibility="Auto"
-                                 AutomationProperties.Name="SQL editor" />
-        </DockPanel>
+            <avalonEdit:TextEditor x:Name="Editor"
+                                   FontFamily="Consolas" FontSize="13"
+                                   ShowLineNumbers="True"
+                                   WordWrap="False"
+                                   HorizontalScrollBarVisibility="Auto"
+                                   VerticalScrollBarVisibility="Auto"
+                                   AutomationProperties.Name="SQL editor" />
+          </DockPanel>
 
-        <GridSplitter Grid.Row="2" Height="4" HorizontalAlignment="Stretch"
+          <!-- Content is the selected detail tab's TableDetailViewModel. -->
+          <ContentControl x:Name="ObjectDetailHost"
+                          Visibility="Collapsed"
+                          ContentTemplate="{StaticResource ObjectDetailTemplate}"
+                          AutomationProperties.Name="Object detail" />
+        </Grid>
+
+        <GridSplitter x:Name="ResultsSplitter"
+                      Grid.Row="2" Height="4" HorizontalAlignment="Stretch"
                       Background="#FFE0E0E0" />
 
-        <TabControl Grid.Row="3" x:Name="ResultsArea" SelectionChanged="OnBottomTabChanged">
+        <TabControl Grid.Row="3" x:Name="ResultsArea">
           <TabItem Header="Results">
             <DockPanel>
               <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="4">
@@ -533,143 +693,6 @@
                 </DataTemplate>
               </ListBox.ItemTemplate>
             </ListBox>
-          </TabItem>
-
-          <!--
-            Object detail (PR-2.4). Loads only while this tab is showing (PR-6.4),
-            and every Informix-specific term carries its explanation on the tooltip
-            (NFR-11) — U2 will not know what a dbspace is.
-          -->
-          <TabItem x:Name="ObjectDetailTab" Header="Object">
-            <Grid DataContext="{Binding ObjectTree.Detail}">
-              <TextBlock Text="Select a table or view in the tree to see its detail."
-                         Foreground="#FF5F6368" Margin="10"
-                         Visibility="{Binding HasDetail, Converter={StaticResource BoolToVisibility},
-                                      ConverterParameter=Invert}" />
-
-              <ScrollViewer VerticalScrollBarVisibility="Auto"
-                            Visibility="{Binding HasDetail, Converter={StaticResource BoolToVisibility}}">
-                <StackPanel Margin="10">
-
-                  <TextBlock Text="{Binding Title}" Style="{StaticResource HeadingText}" />
-
-                  <TextBlock Text="{Binding StorageSummary}" Margin="0,6,0,0"
-                             TextWrapping="Wrap" Foreground="#FF3C4043" />
-
-                  <TextBlock Text="{Binding StatisticsSummary}" Margin="0,4,0,10"
-                             TextWrapping="Wrap" Foreground="#FF3C4043"
-                             ToolTip="{x:Static vm:InformixConcepts.Statistics}" />
-
-                  <Expander Header="Columns" IsExpanded="True" Margin="0,0,0,8">
-                    <DataGrid ItemsSource="{Binding Detail.Columns}"
-                              AutoGenerateColumns="False" IsReadOnly="True"
-                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                              MaxHeight="320" FontFamily="Consolas" FontSize="12">
-                      <DataGrid.Columns>
-                        <DataGridTextColumn Header="#" Binding="{Binding Position}" Width="40" />
-                        <DataGridTextColumn Header="Column" Binding="{Binding Name}" Width="200" />
-                        <DataGridTextColumn Header="Type" Binding="{Binding TypeDescription}" Width="200" />
-                        <DataGridCheckBoxColumn Header="Null?" Binding="{Binding IsNullable}" Width="55" />
-                        <DataGridTextColumn Header="Default" Binding="{Binding DefaultValue}" Width="120" />
-                        <!-- PR-8.2: the catalogue's own encoding, on show. -->
-                        <DataGridTextColumn Header="coltype" Binding="{Binding RawColType}" Width="65" />
-                        <DataGridTextColumn Header="collength" Binding="{Binding RawColLength}" Width="75" />
-                      </DataGrid.Columns>
-                    </DataGrid>
-                  </Expander>
-
-                  <Expander Header="Indexes" IsExpanded="True" Margin="0,0,0,8">
-                    <DataGrid ItemsSource="{Binding Detail.Indexes}"
-                              AutoGenerateColumns="False" IsReadOnly="True"
-                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                              MaxHeight="200" FontFamily="Consolas" FontSize="12">
-                      <DataGrid.Columns>
-                        <DataGridTextColumn Header="Index" Binding="{Binding Name}" Width="200" />
-                        <DataGridCheckBoxColumn Header="Unique" Binding="{Binding IsUnique}" Width="60" />
-                        <DataGridCheckBoxColumn Header="Clustered" Binding="{Binding IsClustered}" Width="70" />
-                        <DataGridCheckBoxColumn Header="Constraint" Binding="{Binding BacksConstraint}" Width="75" />
-                        <DataGridTextColumn Header="Key"
-                                            Binding="{Binding Columns, Converter={StaticResource JoinList}}"
-                                            Width="*" />
-                      </DataGrid.Columns>
-                    </DataGrid>
-                  </Expander>
-
-                  <Expander Header="Constraints" IsExpanded="True" Margin="0,0,0,8">
-                    <DataGrid ItemsSource="{Binding Detail.Constraints}"
-                              AutoGenerateColumns="False" IsReadOnly="True"
-                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                              MaxHeight="200" FontFamily="Consolas" FontSize="12">
-                      <DataGrid.Columns>
-                        <DataGridTextColumn Header="Constraint" Binding="{Binding Name}" Width="200" />
-                        <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="90" />
-                        <DataGridTextColumn Header="Columns"
-                                            Binding="{Binding Columns, Converter={StaticResource JoinList}}"
-                                            Width="200" />
-                        <DataGridTextColumn Header="References" Binding="{Binding ReferencedTable}" Width="150" />
-                        <DataGridTextColumn Header="Check" Binding="{Binding CheckExpression}" Width="*" />
-                      </DataGrid.Columns>
-                    </DataGrid>
-                  </Expander>
-
-                  <Expander Header="Triggers" Margin="0,0,0,8">
-                    <DataGrid ItemsSource="{Binding Detail.Triggers}"
-                              AutoGenerateColumns="False" IsReadOnly="True"
-                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                              MaxHeight="150" FontFamily="Consolas" FontSize="12">
-                      <DataGrid.Columns>
-                        <DataGridTextColumn Header="Trigger" Binding="{Binding Name}" Width="220" />
-                        <DataGridTextColumn Header="Owner" Binding="{Binding Owner}" Width="120" />
-                        <DataGridTextColumn Header="Event" Binding="{Binding Event}" Width="*" />
-                      </DataGrid.Columns>
-                    </DataGrid>
-                  </Expander>
-
-                  <Expander Header="Storage and fragmentation" Margin="0,0,0,8"
-                            ToolTip="{x:Static vm:InformixConcepts.Fragmentation}">
-                    <DataGrid ItemsSource="{Binding Detail.Fragments}"
-                              AutoGenerateColumns="False" IsReadOnly="True"
-                              HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                              MaxHeight="180" FontFamily="Consolas" FontSize="12">
-                      <DataGrid.Columns>
-                        <DataGridTextColumn Header="Strategy" Binding="{Binding Strategy}" Width="110" />
-                        <DataGridTextColumn Header="Dbspace" Binding="{Binding DbSpace}" Width="150" />
-                        <DataGridTextColumn Header="Expression" Binding="{Binding Expression}" Width="*" />
-                      </DataGrid.Columns>
-                    </DataGrid>
-                  </Expander>
-
-                  <Expander Header="What these Informix terms mean" Margin="0,0,0,8">
-                    <StackPanel Margin="6">
-                      <TextBlock Text="Dbspace" FontWeight="SemiBold" Margin="0,4,0,0" />
-                      <TextBlock Text="{x:Static vm:InformixConcepts.DbSpace}" TextWrapping="Wrap" />
-                      <TextBlock Text="Extent" FontWeight="SemiBold" Margin="0,8,0,0" />
-                      <TextBlock Text="{x:Static vm:InformixConcepts.Extent}" TextWrapping="Wrap" />
-                      <TextBlock Text="Fragmentation" FontWeight="SemiBold" Margin="0,8,0,0" />
-                      <TextBlock Text="{x:Static vm:InformixConcepts.Fragmentation}" TextWrapping="Wrap" />
-                      <TextBlock Text="Lock mode" FontWeight="SemiBold" Margin="0,8,0,0" />
-                      <TextBlock Text="{x:Static vm:InformixConcepts.LockMode}" TextWrapping="Wrap" />
-                      <TextBlock Text="Statistics" FontWeight="SemiBold" Margin="0,8,0,0" />
-                      <TextBlock Text="{x:Static vm:InformixConcepts.Statistics}" TextWrapping="Wrap" />
-                    </StackPanel>
-                  </Expander>
-
-                  <!-- PR-8.2 / PR-8.3: exactly what IMS asked the server. -->
-                  <Expander Header="Catalogue queries behind this pane" Margin="0,0,0,8">
-                    <TextBox Text="{Binding QueriesUsed, Mode=OneWay}"
-                             IsReadOnly="True" AcceptsReturn="True"
-                             FontFamily="Consolas" FontSize="11"
-                             MaxHeight="240"
-                             VerticalScrollBarVisibility="Auto"
-                             HorizontalScrollBarVisibility="Auto" />
-                  </Expander>
-
-                </StackPanel>
-              </ScrollViewer>
-
-              <TextBlock Text="{Binding Error}" Foreground="#FFB3261E" Margin="10"
-                         TextWrapping="Wrap" VerticalAlignment="Bottom" />
-            </Grid>
           </TabItem>
         </TabControl>
       </Grid>

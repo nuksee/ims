@@ -252,6 +252,17 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// The selected tab when it is an editor, and null when it is not.
+    /// </summary>
+    /// <remarks>
+    /// The strip also holds object detail tabs, which have no SQL, no session and no
+    /// results. Everything editor-shaped — execute, cancel, save, export, commit —
+    /// goes through here, so selecting a detail tab makes those actions do nothing
+    /// rather than act on a tab the user is not looking at.
+    /// </remarks>
+    private EditorTabViewModel? SelectedEditor => _viewModel.SelectedTab as EditorTabViewModel;
+
+    /// <summary>
     /// Points the single editor control at the selected tab.
     /// </summary>
     /// <remarks>
@@ -267,12 +278,47 @@ public partial class MainWindow : Window
             _editorBoundTo.Sql = Editor.Text;
         }
 
-        _editorBoundTo = _viewModel.SelectedTab;
+        // A detail tab has no SQL, so nothing binds to the editor and the editor keeps
+        // whatever it last held — it is hidden anyway, and reassigning Editor.Text
+        // would push an undo entry and send the caret to the top of a document the
+        // user has not left (PR-8.5).
+        if (_viewModel.SelectedTab is EditorTabViewModel editor)
+        {
+            _editorBoundTo = editor;
 
-        Editor.Text = _editorBoundTo?.Sql ?? string.Empty;
-        Editor.IsEnabled = _editorBoundTo is not null;
+            Editor.Text = editor.Sql;
+            Editor.IsEnabled = true;
+        }
+        else
+        {
+            _editorBoundTo = null;
+            Editor.IsEnabled = false;
+        }
 
+        ShowHostForSelectedTab();
         RebuildResultColumns();
+    }
+
+    /// <summary>
+    /// Shows whichever of the two documents the selected tab is.
+    /// </summary>
+    /// <remarks>
+    /// The tab strip renders no content of its own — one shared AvalonEdit lives
+    /// beside it — so the swap is done here rather than by a ContentTemplate. The
+    /// results area goes with the editor: Results and Messages describe a statement,
+    /// and leaving another tab's grid under an object's detail would say they were
+    /// about the same thing.
+    /// </remarks>
+    private void ShowHostForSelectedTab()
+    {
+        bool detail = _viewModel.SelectedTab is ObjectDetailTabViewModel;
+
+        ObjectDetailHost.Content = (_viewModel.SelectedTab as ObjectDetailTabViewModel)?.Detail;
+
+        ObjectDetailHost.Visibility = detail ? Visibility.Visible : Visibility.Collapsed;
+        EditorHost.Visibility = detail ? Visibility.Collapsed : Visibility.Visible;
+        ResultsArea.Visibility = detail ? Visibility.Collapsed : Visibility.Visible;
+        ResultsSplitter.Visibility = detail ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void OnTabChanged(object sender, SelectionChangedEventArgs e)
@@ -353,7 +399,7 @@ public partial class MainWindow : Window
     {
         ResultGrid.Columns.Clear();
 
-        ResultSetViewModel? result = _viewModel.SelectedTab?.SelectedResult;
+        ResultSetViewModel? result = SelectedEditor?.SelectedResult;
 
         if (result is null)
         {
@@ -490,7 +536,7 @@ public partial class MainWindow : Window
 
     private void SaveCurrentTab(bool saveAs)
     {
-        if (_viewModel.SelectedTab is not { } tab)
+        if (SelectedEditor is not { } tab)
         {
             return;
         }
@@ -538,7 +584,7 @@ public partial class MainWindow : Window
 
     private async void OnCloseTab(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is EditorTabViewModel tab)
+        if ((sender as FrameworkElement)?.DataContext is ITabViewModel tab)
         {
             await CloseTabAsync(tab);
         }
@@ -548,7 +594,7 @@ public partial class MainWindow : Window
     private async void OnTabHeaderMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Middle
-            || (sender as FrameworkElement)?.DataContext is not EditorTabViewModel tab)
+            || (sender as FrameworkElement)?.DataContext is not ITabViewModel tab)
         {
             return;
         }
@@ -577,7 +623,7 @@ public partial class MainWindow : Window
     /// never lost makes no exception for it.
     /// </para>
     /// </remarks>
-    private async Task CloseTabAsync(EditorTabViewModel tab)
+    private async Task CloseTabAsync(ITabViewModel tab)
     {
         bool closingTheOneOnScreen = ReferenceEquals(_editorBoundTo, tab);
 
@@ -592,6 +638,12 @@ public partial class MainWindow : Window
         {
             BindEditorToSelectedTab();
         }
+        else
+        {
+            // The editor stayed put, but the closed tab may have been the detail one
+            // that was covering it.
+            ShowHostForSelectedTab();
+        }
     }
 
     // ---- Query menu ------------------------------------------------------------
@@ -602,7 +654,7 @@ public partial class MainWindow : Window
 
     private async Task ExecuteAsync(bool selection)
     {
-        if (_viewModel.SelectedTab is not { } tab)
+        if (SelectedEditor is not { } tab)
         {
             return;
         }
@@ -634,7 +686,7 @@ public partial class MainWindow : Window
 
     private async void OnCancel(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedTab is { } tab)
+        if (SelectedEditor is { } tab)
         {
             await tab.CancelAsync();
         }
@@ -647,7 +699,7 @@ public partial class MainWindow : Window
     /// </remarks>
     private void OnDismissCancelNotice(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedTab is { } tab)
+        if (SelectedEditor is { } tab)
         {
             tab.CancelNotice = null;
         }
@@ -655,7 +707,7 @@ public partial class MainWindow : Window
 
     private async void OnCommit(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedTab?.Session is { } session)
+        if (SelectedEditor?.Session is { } session)
         {
             await Task.Run(() => session.CommitAsync(CancellationToken.None));
             _viewModel.StatusText = "Committed.";
@@ -664,7 +716,7 @@ public partial class MainWindow : Window
 
     private async void OnRollback(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedTab?.Session is { } session)
+        if (SelectedEditor?.Session is { } session)
         {
             await Task.Run(() => session.RollbackAsync(CancellationToken.None));
             _viewModel.StatusText = "Rolled back.";
@@ -760,7 +812,7 @@ public partial class MainWindow : Window
 
     private async Task ExportAsync(ExportFormat format)
     {
-        if (_viewModel.SelectedTab?.SelectedResult is not { } result)
+        if (SelectedEditor?.SelectedResult is not { } result)
         {
             return;
         }
@@ -809,7 +861,7 @@ public partial class MainWindow : Window
 
     private async void OnFetchMore(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedTab?.SelectedResult is { } result)
+        if (SelectedEditor?.SelectedResult is { } result)
         {
             await result.FetchMoreAsync(CancellationToken.None);
         }
@@ -862,7 +914,7 @@ public partial class MainWindow : Window
         BindEditorToSelectedTab();
 
         _viewModel.NewTab(
-            session: _viewModel.SelectedTab?.Session,
+            session: SelectedEditor?.Session,
             sql: $"SELECT FIRST 100 *{Environment.NewLine}  FROM {schemaObject.QualifiedName};",
             title: schemaObject.Name);
 
@@ -909,7 +961,7 @@ public partial class MainWindow : Window
         BindEditorToSelectedTab();
 
         _viewModel.NewTab(
-            session: _viewModel.SelectedTab?.Session,
+            session: SelectedEditor?.Session,
             sql: result.Sql,
             title: schemaObject.Name + " (DDL)");
 
@@ -949,49 +1001,32 @@ public partial class MainWindow : Window
         BindEditorToSelectedTab();
 
         _viewModel.NewTab(
-            session: _viewModel.SelectedTab?.Session,
+            session: SelectedEditor?.Session,
             sql: sql,
             title: "Catalogue query");
 
         BindEditorToSelectedTab();
     }
 
-    /// <summary>Switches to the detail pane and loads the selection (PR-2.4).</summary>
-    private async void OnShowObjectDetail(object sender, RoutedEventArgs e)
-    {
-        if (_viewModel.ObjectTree is not { } tree)
-        {
-            return;
-        }
-
-        ResultsArea.SelectedItem = ObjectDetailTab;
-        tree.IsDetailVisible = true;
-
-        await tree.RefreshDetailAsync(CancellationToken.None);
-    }
-
-    /// <summary>
-    /// Tracks whether the detail pane is showing, so it only queries when visible.
-    /// </summary>
+    /// <summary>Opens the selected object's detail in its own tab (PR-2.4).</summary>
     /// <remarks>
-    /// PR-6.4: metadata queries must stay negligible on a production instance.
-    /// Arrowing through 500 tables should not issue 500 rounds of six catalogue
-    /// queries because a hidden pane was keeping up with the selection.
+    /// The same shape as <see cref="OnSelectFirstRows"/>: flush the editor before the
+    /// selection moves, open the tab, and bind again once it has. Detail used to be a
+    /// pane in the results area that followed the tree; it is a document now, so it
+    /// goes in the strip with the editors and stays on the object it was opened for.
     /// </remarks>
-    private async void OnBottomTabChanged(object sender, SelectionChangedEventArgs e)
+    private void OnShowObjectDetail(object sender, RoutedEventArgs e)
     {
-        if (!ReferenceEquals(e.OriginalSource, ResultsArea) || _viewModel.ObjectTree is not { } tree)
+        if (_viewModel.ObjectTree?.SelectedObject is not { } schemaObject)
         {
             return;
         }
 
-        bool visible = ReferenceEquals(ResultsArea.SelectedItem, ObjectDetailTab);
-        tree.IsDetailVisible = visible;
+        BindEditorToSelectedTab();
 
-        if (visible)
-        {
-            await tree.RefreshDetailAsync(CancellationToken.None);
-        }
+        _viewModel.OpenObjectDetailTab(schemaObject);
+
+        BindEditorToSelectedTab();
     }
 
     private async void OnRefreshTreeNode(object sender, RoutedEventArgs e)
@@ -1062,7 +1097,7 @@ public partial class MainWindow : Window
 
     private async void OnClosing(object sender, System.ComponentModel.CancelEventArgs e)
     {
-        if (_viewModel.SelectedTab is { } tab)
+        if (SelectedEditor is { } tab)
         {
             tab.Sql = Editor.Text;
         }
