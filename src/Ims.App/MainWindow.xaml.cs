@@ -726,6 +726,13 @@ public partial class MainWindow : Window
         await tab.ExecuteAsync(selectedText);
 
         RebuildResultColumns();
+
+        // The bottom pane follows the outcome, so a run always lands on what it
+        // produced. On failure that is Messages, where the SQLCODE and ISAM error live
+        // (PR-3.4, PR-3.6) — Results would show an empty grid, or worse the previous
+        // run's rows, with nothing saying why. On success it is the results themselves,
+        // which is what the user ran the statement to see.
+        ResultsArea.SelectedItem = tab.LastRunFailed ? MessagesTab : ResultsTab;
     }
 
     private async void OnCancel(object sender, RoutedEventArgs e)

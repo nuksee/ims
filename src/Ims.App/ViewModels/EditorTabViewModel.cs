@@ -83,6 +83,19 @@ public sealed partial class EditorTabViewModel : ObservableObject, ITabViewModel
     [ObservableProperty]
     private ResultSetViewModel? _selectedResult;
 
+    /// <summary>
+    /// Whether the last run had a statement fail, so the shell knows which bottom
+    /// pane to show.
+    /// </summary>
+    /// <remarks>
+    /// A failure's detail — SQLCODE, ISAM error, which statement — lives only on the
+    /// Messages tab (PR-3.4, PR-3.6), and the Results tab beside it stays empty or
+    /// shows the previous run's grid; a success is the other way round. This is a
+    /// signal the view acts on rather than a counter for display;
+    /// <see cref="StatusText"/> already says how many failed.
+    /// </remarks>
+    public bool LastRunFailed { get; private set; }
+
     /// <param name="confirmDestructive">
     /// Asks the user to confirm an unqualified UPDATE or DELETE (PR-3.8). Injected
     /// so the view model stays testable and so the prompt is the shell's business.
@@ -146,6 +159,7 @@ public sealed partial class EditorTabViewModel : ObservableObject, ITabViewModel
 
         // A new run means the last one's warning is stale, whatever became of it.
         CancelNotice = null;
+        LastRunFailed = false;
 
         _execution = new CancellationTokenSource();
         IsExecuting = true;
@@ -199,6 +213,8 @@ public sealed partial class EditorTabViewModel : ObservableObject, ITabViewModel
 
             stopwatch.Stop();
 
+            LastRunFailed = failed > 0;
+
             StatusText = failed == 0
                 ? $"{statements.Count} statement(s) in {stopwatch.ElapsedMilliseconds:N0} ms"
                 : $"{failed} of {statements.Count} statement(s) failed — "
@@ -231,6 +247,7 @@ public sealed partial class EditorTabViewModel : ObservableObject, ITabViewModel
         catch (InformixException ex)
         {
             stopwatch.Stop();
+            LastRunFailed = true;
             StatusText = ex.Error.ToString();
         }
         finally

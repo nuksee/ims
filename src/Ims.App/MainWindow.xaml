@@ -642,7 +642,7 @@
                       Background="#FFE0E0E0" />
 
         <TabControl Grid.Row="3" x:Name="ResultsArea">
-          <TabItem Header="Results">
+          <TabItem x:Name="ResultsTab" Header="Results">
             <DockPanel>
               <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="4">
                 <TextBlock Text="{Binding SelectedTab.SelectedResult.Status}"
@@ -696,7 +696,7 @@
             </DockPanel>
           </TabItem>
 
-          <TabItem Header="Messages">
+          <TabItem x:Name="MessagesTab" Header="Messages">
             <!-- PR-3.4 and PR-3.6: each statement's outcome in sequence, with the
                  failing one named and its SQLCODE and ISAM error shown. -->
             <ListBox ItemsSource="{Binding SelectedTab.Outcomes}"
