@@ -52,6 +52,7 @@ Releases are marked pre-release while the status above says pilot.
 | Document | What it is |
 |---|---|
 | [Manual](https://nuksee.github.io/ims/help/) | Connections, editor, results, keyboard, files and logs, troubleshooting. Served from [src/Ims.App/Resources/Help/ims-help.html](src/Ims.App/Resources/Help/ims-help.html), the same file <kbd>F1</kbd> opens in the application |
+| [CHANGELOG.md](docs/releaseChangelogs/CHANGELOG.md) | What changed in each pilot build, and the limits that apply to all of them. The annotated tag (`git show v0.2.0-pilot`) is the fuller record |
 | [PRD-Informix-Management-Studio.md](docs/PRD-Informix-Management-Studio.md) | Product requirements: scope, decisions and their rationale, requirement IDs, deferred backlog |
 | [IMPLEMENTATION-TODO.md](docs/IMPLEMENTATION-TODO.md) | Task list per slice, each traced back to a PRD requirement ID |
 
