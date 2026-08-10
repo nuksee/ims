@@ -29,7 +29,7 @@
     <!-- Bump this when cutting a tag, or the About window will contradict it. The
          commit id beside it is stamped automatically and cannot drift; this number
          is the one that can, so it is the one to check. -->
-    <Version>0.1.1</Version>
+    <Version>0.1.2</Version>
     <NeutralLanguage>en</NeutralLanguage>
 
     <!-- The StampGitCommit target below puts the abbreviated commit into
