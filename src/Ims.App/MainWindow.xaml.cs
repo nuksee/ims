@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -74,6 +74,15 @@ public partial class MainWindow : Window
 
     private EditorTabViewModel? _editorBoundTo;
     private CompletionWindow? _completionWindow;
+
+    // The results pane's row heights while it is showing, so a detail tab can zero
+    // them and give the space back, then restore whatever the user had dragged to.
+    // Seeded with the XAML's own values for the case where the first tab selected is
+    // a detail one and there has been nothing to remember yet.
+    private const double ResultsMinHeight = 120;
+
+    private GridLength _resultsRowHeight = new(1, GridUnitType.Star);
+    private GridLength _resultsSplitterRowHeight = new(4);
 
     public MainWindow(
         MainViewModel viewModel,
@@ -252,6 +261,17 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// The selected tab when it is an editor, and null when it is not.
+    /// </summary>
+    /// <remarks>
+    /// The strip also holds object detail tabs, which have no SQL, no session and no
+    /// results. Everything editor-shaped — execute, cancel, save, export, commit —
+    /// goes through here, so selecting a detail tab makes those actions do nothing
+    /// rather than act on a tab the user is not looking at.
+    /// </remarks>
+    private EditorTabViewModel? SelectedEditor => _viewModel.SelectedTab as EditorTabViewModel;
+
+    /// <summary>
     /// Points the single editor control at the selected tab.
     /// </summary>
     /// <remarks>
@@ -267,12 +287,82 @@ public partial class MainWindow : Window
             _editorBoundTo.Sql = Editor.Text;
         }
 
-        _editorBoundTo = _viewModel.SelectedTab;
+        // A detail tab has no SQL, so nothing binds to the editor and the editor keeps
+        // whatever it last held — it is hidden anyway, and reassigning Editor.Text
+        // would push an undo entry and send the caret to the top of a document the
+        // user has not left (PR-8.5).
+        if (_viewModel.SelectedTab is EditorTabViewModel editor)
+        {
+            _editorBoundTo = editor;
 
-        Editor.Text = _editorBoundTo?.Sql ?? string.Empty;
-        Editor.IsEnabled = _editorBoundTo is not null;
+            Editor.Text = editor.Sql;
+            Editor.IsEnabled = true;
+        }
+        else
+        {
+            _editorBoundTo = null;
+            Editor.IsEnabled = false;
+        }
 
+        ShowHostForSelectedTab();
         RebuildResultColumns();
+    }
+
+    /// <summary>
+    /// Shows whichever of the two documents the selected tab is.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The tab strip renders no content of its own — one shared AvalonEdit lives
+    /// beside it — so the swap is done here rather than by a ContentTemplate. The
+    /// results area goes with the editor: Results and Messages describe a statement,
+    /// and leaving another tab's grid under an object's detail would say they were
+    /// about the same thing.
+    /// </para>
+    /// <para>
+    /// Collapsing the results TabControl and its splitter is not enough. Their row is
+    /// <c>Height="*" MinHeight="120"</c>, and a row keeps its star share and its
+    /// minimum whether or not the child in it is visible — so hiding the pane left a
+    /// blank band of its exact size under the detail, which is what it was supposed to
+    /// reclaim. The row heights have to go to zero with it.
+    /// </para>
+    /// <para>
+    /// The star share is remembered rather than recomputed, so a splitter the user has
+    /// dragged comes back where they left it. Restoring a hardcoded <c>1*</c> would
+    /// silently undo their drag every time they looked at an object.
+    /// </para>
+    /// </remarks>
+    private void ShowHostForSelectedTab()
+    {
+        bool detail = _viewModel.SelectedTab is ObjectDetailTabViewModel;
+
+        ObjectDetailHost.Content = (_viewModel.SelectedTab as ObjectDetailTabViewModel)?.Detail;
+
+        ObjectDetailHost.Visibility = detail ? Visibility.Visible : Visibility.Collapsed;
+        EditorHost.Visibility = detail ? Visibility.Collapsed : Visibility.Visible;
+        ResultsArea.Visibility = detail ? Visibility.Collapsed : Visibility.Visible;
+        ResultsSplitter.Visibility = detail ? Visibility.Collapsed : Visibility.Visible;
+
+        if (detail)
+        {
+            // Only remember a height that is actually the pane's, or switching between
+            // two detail tabs would record the zeroes and lose the proportion.
+            if (ResultsRow.Height.Value > 0)
+            {
+                _resultsRowHeight = ResultsRow.Height;
+                _resultsSplitterRowHeight = ResultsSplitterRow.Height;
+            }
+
+            ResultsRow.MinHeight = 0;
+            ResultsRow.Height = new GridLength(0);
+            ResultsSplitterRow.Height = new GridLength(0);
+        }
+        else
+        {
+            ResultsRow.MinHeight = ResultsMinHeight;
+            ResultsRow.Height = _resultsRowHeight;
+            ResultsSplitterRow.Height = _resultsSplitterRowHeight;
+        }
     }
 
     private void OnTabChanged(object sender, SelectionChangedEventArgs e)
@@ -353,7 +443,7 @@ public partial class MainWindow : Window
     {
         ResultGrid.Columns.Clear();
 
-        ResultSetViewModel? result = _viewModel.SelectedTab?.SelectedResult;
+        ResultSetViewModel? result = SelectedEditor?.SelectedResult;
 
         if (result is null)
         {
@@ -490,7 +580,7 @@ public partial class MainWindow : Window
 
     private void SaveCurrentTab(bool saveAs)
     {
-        if (_viewModel.SelectedTab is not { } tab)
+        if (SelectedEditor is not { } tab)
         {
             return;
         }
@@ -538,7 +628,7 @@ public partial class MainWindow : Window
 
     private async void OnCloseTab(object sender, RoutedEventArgs e)
     {
-        if ((sender as FrameworkElement)?.DataContext is EditorTabViewModel tab)
+        if ((sender as FrameworkElement)?.DataContext is ITabViewModel tab)
         {
             await CloseTabAsync(tab);
         }
@@ -548,7 +638,7 @@ public partial class MainWindow : Window
     private async void OnTabHeaderMouseDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ChangedButton != MouseButton.Middle
-            || (sender as FrameworkElement)?.DataContext is not EditorTabViewModel tab)
+            || (sender as FrameworkElement)?.DataContext is not ITabViewModel tab)
         {
             return;
         }
@@ -577,7 +667,7 @@ public partial class MainWindow : Window
     /// never lost makes no exception for it.
     /// </para>
     /// </remarks>
-    private async Task CloseTabAsync(EditorTabViewModel tab)
+    private async Task CloseTabAsync(ITabViewModel tab)
     {
         bool closingTheOneOnScreen = ReferenceEquals(_editorBoundTo, tab);
 
@@ -592,6 +682,12 @@ public partial class MainWindow : Window
         {
             BindEditorToSelectedTab();
         }
+        else
+        {
+            // The editor stayed put, but the closed tab may have been the detail one
+            // that was covering it.
+            ShowHostForSelectedTab();
+        }
     }
 
     // ---- Query menu ------------------------------------------------------------
@@ -602,7 +698,7 @@ public partial class MainWindow : Window
 
     private async Task ExecuteAsync(bool selection)
     {
-        if (_viewModel.SelectedTab is not { } tab)
+        if (SelectedEditor is not { } tab)
         {
             return;
         }
@@ -634,7 +730,7 @@ public partial class MainWindow : Window
 
     private async void OnCancel(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedTab is { } tab)
+        if (SelectedEditor is { } tab)
         {
             await tab.CancelAsync();
         }
@@ -647,7 +743,7 @@ public partial class MainWindow : Window
     /// </remarks>
     private void OnDismissCancelNotice(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedTab is { } tab)
+        if (SelectedEditor is { } tab)
         {
             tab.CancelNotice = null;
         }
@@ -655,7 +751,7 @@ public partial class MainWindow : Window
 
     private async void OnCommit(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedTab?.Session is { } session)
+        if (SelectedEditor?.Session is { } session)
         {
             await Task.Run(() => session.CommitAsync(CancellationToken.None));
             _viewModel.StatusText = "Committed.";
@@ -664,7 +760,7 @@ public partial class MainWindow : Window
 
     private async void OnRollback(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedTab?.Session is { } session)
+        if (SelectedEditor?.Session is { } session)
         {
             await Task.Run(() => session.RollbackAsync(CancellationToken.None));
             _viewModel.StatusText = "Rolled back.";
@@ -760,7 +856,7 @@ public partial class MainWindow : Window
 
     private async Task ExportAsync(ExportFormat format)
     {
-        if (_viewModel.SelectedTab?.SelectedResult is not { } result)
+        if (SelectedEditor?.SelectedResult is not { } result)
         {
             return;
         }
@@ -809,7 +905,7 @@ public partial class MainWindow : Window
 
     private async void OnFetchMore(object sender, RoutedEventArgs e)
     {
-        if (_viewModel.SelectedTab?.SelectedResult is { } result)
+        if (SelectedEditor?.SelectedResult is { } result)
         {
             await result.FetchMoreAsync(CancellationToken.None);
         }
@@ -840,6 +936,55 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Selects the node a right-click lands on, before the menu opens.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A <see cref="TreeViewItem"/> selects on left-click only. The context menu acts
+    /// on the tree's <em>selection</em>, so without this a right-click showed a menu
+    /// describing one node while every action ran against whichever node had last been
+    /// left-clicked — right-click a table, choose "Show detail", get a different
+    /// table's. Worse for being quiet: the menu's enabled items came from the old
+    /// selection too, so the wrong answer looked like the right one.
+    /// </para>
+    /// <para>
+    /// Previewing the button-down puts the selection in place before the menu builds
+    /// its bindings. The event is deliberately <em>not</em> handled: the right-click
+    /// still has to reach the TreeViewItem for the menu to open at all.
+    /// </para>
+    /// </remarks>
+    private void OnTreeItemRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // The style is on every container, so the click is seen by each item from the
+        // clicked one up to the root. Only the innermost is the one under the cursor.
+        if (sender is not TreeViewItem item
+            || !ReferenceEquals(item, FindParentTreeViewItem(e.OriginalSource as DependencyObject)))
+        {
+            return;
+        }
+
+        // Focus as well as select: without it the tree can keep the caret elsewhere and
+        // draw the selection grey, which reads as "not selected" (NFR-8).
+        item.Focus();
+        item.IsSelected = true;
+    }
+
+    /// <summary>The nearest <see cref="TreeViewItem"/> at or above a hit-tested element.</summary>
+    private static TreeViewItem? FindParentTreeViewItem(DependencyObject? source)
+    {
+        while (source is not null and not TreeViewItem)
+        {
+            // VisualTreeHelper alone stops at a ContentPresenter's template boundary,
+            // which is exactly where a TreeViewItem's header content sits.
+            source = source is System.Windows.Media.Visual or System.Windows.Media.Media3D.Visual3D
+                ? System.Windows.Media.VisualTreeHelper.GetParent(source)
+                : LogicalTreeHelper.GetParent(source);
+        }
+
+        return source as TreeViewItem;
+    }
+
     /// <summary>PR-2.8: put a starting query in front of the user, do not run it.</summary>
     /// <remarks>
     /// It opens in an editor rather than executing, because PR-6.2 says IMS sends no
@@ -862,7 +1007,7 @@ public partial class MainWindow : Window
         BindEditorToSelectedTab();
 
         _viewModel.NewTab(
-            session: _viewModel.SelectedTab?.Session,
+            session: SelectedEditor?.Session,
             sql: $"SELECT FIRST 100 *{Environment.NewLine}  FROM {schemaObject.QualifiedName};",
             title: schemaObject.Name);
 
@@ -909,7 +1054,7 @@ public partial class MainWindow : Window
         BindEditorToSelectedTab();
 
         _viewModel.NewTab(
-            session: _viewModel.SelectedTab?.Session,
+            session: SelectedEditor?.Session,
             sql: result.Sql,
             title: schemaObject.Name + " (DDL)");
 
@@ -949,49 +1094,32 @@ public partial class MainWindow : Window
         BindEditorToSelectedTab();
 
         _viewModel.NewTab(
-            session: _viewModel.SelectedTab?.Session,
+            session: SelectedEditor?.Session,
             sql: sql,
             title: "Catalogue query");
 
         BindEditorToSelectedTab();
     }
 
-    /// <summary>Switches to the detail pane and loads the selection (PR-2.4).</summary>
-    private async void OnShowObjectDetail(object sender, RoutedEventArgs e)
-    {
-        if (_viewModel.ObjectTree is not { } tree)
-        {
-            return;
-        }
-
-        ResultsArea.SelectedItem = ObjectDetailTab;
-        tree.IsDetailVisible = true;
-
-        await tree.RefreshDetailAsync(CancellationToken.None);
-    }
-
-    /// <summary>
-    /// Tracks whether the detail pane is showing, so it only queries when visible.
-    /// </summary>
+    /// <summary>Opens the selected object's detail in its own tab (PR-2.4).</summary>
     /// <remarks>
-    /// PR-6.4: metadata queries must stay negligible on a production instance.
-    /// Arrowing through 500 tables should not issue 500 rounds of six catalogue
-    /// queries because a hidden pane was keeping up with the selection.
+    /// The same shape as <see cref="OnSelectFirstRows"/>: flush the editor before the
+    /// selection moves, open the tab, and bind again once it has. Detail used to be a
+    /// pane in the results area that followed the tree; it is a document now, so it
+    /// goes in the strip with the editors and stays on the object it was opened for.
     /// </remarks>
-    private async void OnBottomTabChanged(object sender, SelectionChangedEventArgs e)
+    private void OnShowObjectDetail(object sender, RoutedEventArgs e)
     {
-        if (!ReferenceEquals(e.OriginalSource, ResultsArea) || _viewModel.ObjectTree is not { } tree)
+        if (_viewModel.ObjectTree?.SelectedObject is not { } schemaObject)
         {
             return;
         }
 
-        bool visible = ReferenceEquals(ResultsArea.SelectedItem, ObjectDetailTab);
-        tree.IsDetailVisible = visible;
+        BindEditorToSelectedTab();
 
-        if (visible)
-        {
-            await tree.RefreshDetailAsync(CancellationToken.None);
-        }
+        _viewModel.OpenObjectDetailTab(schemaObject);
+
+        BindEditorToSelectedTab();
     }
 
     private async void OnRefreshTreeNode(object sender, RoutedEventArgs e)
@@ -1062,7 +1190,7 @@ public partial class MainWindow : Window
 
     private async void OnClosing(object sender, System.ComponentModel.CancelEventArgs e)
     {
-        if (_viewModel.SelectedTab is { } tab)
+        if (SelectedEditor is { } tab)
         {
             tab.Sql = Editor.Text;
         }

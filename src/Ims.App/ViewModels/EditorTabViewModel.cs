@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -12,7 +12,7 @@ namespace Ims.App.ViewModels;
 /// <summary>
 /// One editor tab: its text, the connection it targets, and what came back.
 /// </summary>
-public sealed partial class EditorTabViewModel : ObservableObject, IAsyncDisposable
+public sealed partial class EditorTabViewModel : ObservableObject, ITabViewModel
 {
     private readonly QueryHistory _history;
     private readonly Func<StatementWarning, string, bool> _confirmDestructive;

@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.Windows;
 using System.Windows.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -69,8 +69,10 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private string _searchTerm = string.Empty;
 
+    // ITabViewModel, not EditorTabViewModel: the strip also holds object detail tabs.
+    // Anything editor-only narrows with a type test rather than assuming.
     [ObservableProperty]
-    private EditorTabViewModel? _selectedTab;
+    private ITabViewModel? _selectedTab;
 
     [ObservableProperty]
     private ConnectionItemViewModel? _selectedConnection;
@@ -124,7 +126,10 @@ public sealed partial class MainViewModel : ObservableObject
 
     public ObservableCollection<ConnectionItemViewModel> Connections { get; } = [];
 
-    public ObservableCollection<EditorTabViewModel> Tabs { get; } = [];
+    public ObservableCollection<ITabViewModel> Tabs { get; } = [];
+
+    /// <summary>The editors among the open tabs.</summary>
+    public IEnumerable<EditorTabViewModel> EditorTabs => Tabs.OfType<EditorTabViewModel>();
 
     /// <summary>Asks the shell to confirm a destructive statement (PR-3.8).</summary>
     public Func<StatementWarning, string, bool> ConfirmDestructive { get; set; } =
@@ -228,7 +233,7 @@ public sealed partial class MainViewModel : ObservableObject
         // each editor's target must stay unambiguous.
         var adopted = 0;
 
-        foreach (EditorTabViewModel tab in Tabs.Where(t => t.Session is null))
+        foreach (EditorTabViewModel tab in EditorTabs.Where(t => t.Session is null))
         {
             tab.Session = session;
             adopted++;
@@ -312,7 +317,7 @@ public sealed partial class MainViewModel : ObservableObject
             await tree.DisposeAsync().ConfigureAwait(true);
         }
 
-        foreach (EditorTabViewModel tab in Tabs.Where(t => ReferenceEquals(t.Session, session)))
+        foreach (EditorTabViewModel tab in EditorTabs.Where(t => ReferenceEquals(t.Session, session)))
         {
             // The tab and its text survive; only the connection goes.
             tab.Session = null;
@@ -328,7 +333,7 @@ public sealed partial class MainViewModel : ObservableObject
     {
         var tab = new EditorTabViewModel(_history, (warning, statement) => ConfirmDestructive(warning, statement))
         {
-            Session = session ?? SelectedTab?.Session,
+            Session = session ?? (SelectedTab as EditorTabViewModel)?.Session,
             Sql = sql ?? string.Empty,
             Title = title ?? $"Query {_nextTabNumber++}",
         };
@@ -343,6 +348,52 @@ public sealed partial class MainViewModel : ObservableObject
     public void NewQuery() => NewTab();
 
     /// <summary>
+    /// Opens an object's detail in a tab of its own (PR-2.4).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One tab per object, and asking twice for the same one returns to the tab that is
+    /// already open rather than adding a second. Repeating "Show detail" on a table you
+    /// are already looking at is a way of going back to it, not a request for a copy.
+    /// </para>
+    /// <para>
+    /// Identity is <see cref="SchemaObject.TabId"/>, the catalogue's own key, rather
+    /// than the name — two owners can have a table of the same name, and they are not
+    /// the same object.
+    /// </para>
+    /// <para>
+    /// The read goes through the tree's reader, so the browser, completion and every
+    /// detail tab share one catalogue connection (PR-6.4). Without a tree there is no
+    /// reader and nothing to show, so this does nothing.
+    /// </para>
+    /// </remarks>
+    public ObjectDetailTabViewModel? OpenObjectDetailTab(SchemaObject? schemaObject)
+    {
+        if (schemaObject is null || ObjectTree is not { } tree)
+        {
+            return null;
+        }
+
+        if (Tabs.OfType<ObjectDetailTabViewModel>()
+                .FirstOrDefault(t => t.Subject.TabId == schemaObject.TabId) is { } open)
+        {
+            SelectedTab = open;
+            return open;
+        }
+
+        var tab = new ObjectDetailTabViewModel(schemaObject, tree.Catalog);
+
+        Tabs.Add(tab);
+        SelectedTab = tab;
+
+        // Not awaited: the tab is on screen and usable at once, and the pane shows its
+        // own empty state until the catalogue answers.
+        _ = tab.LoadAsync(CancellationToken.None);
+
+        return tab;
+    }
+
+    /// <summary>
     /// Closes a tab and picks the next selection.
     /// </summary>
     /// <remarks>
@@ -353,7 +404,7 @@ public sealed partial class MainViewModel : ObservableObject
     /// middle-click makes closing a background tab a passing gesture.
     /// </remarks>
     [RelayCommand]
-    public async Task CloseTabAsync(EditorTabViewModel? tab)
+    public async Task CloseTabAsync(ITabViewModel? tab)
     {
         if (tab is null)
         {
@@ -364,7 +415,12 @@ public sealed partial class MainViewModel : ObservableObject
         bool wasSelected = ReferenceEquals(SelectedTab, tab);
 
         Tabs.Remove(tab);
-        _autosave.Discard(TabKey(tab));
+
+        // Only editors are autosaved, so only editors have anything to discard.
+        if (tab is EditorTabViewModel editor)
+        {
+            _autosave.Discard(TabKey(editor));
+        }
 
         await tab.DisposeAsync().ConfigureAwait(true);
 
@@ -422,7 +478,7 @@ public sealed partial class MainViewModel : ObservableObject
             await tree.DisposeAsync().ConfigureAwait(true);
         }
 
-        foreach (EditorTabViewModel tab in Tabs)
+        foreach (EditorTabViewModel tab in EditorTabs.ToList())
         {
             // A clean exit still autosaves: reopening where you left off is the
             // behaviour people expect, and PR-3.9 costs nothing extra here.
@@ -456,7 +512,7 @@ public sealed partial class MainViewModel : ObservableObject
 
     private void AutosaveDirtyTabs()
     {
-        foreach (EditorTabViewModel tab in Tabs.Where(t => t.IsDirty))
+        foreach (EditorTabViewModel tab in EditorTabs.Where(t => t.IsDirty))
         {
             // Emptying a tab is an edit like any other, so it has to remove the file
             // rather than leave the last non-empty version behind to be reopened.
