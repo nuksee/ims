@@ -50,3 +50,8 @@ local.settings.json
 
 ## Claude Code — per-user overrides only; .claude/settings.json is committed.
 .claude/settings.local.json
+
+## Site: /help/ is generated at deploy time by .github/workflows/pages.yml
+## from src/Ims.App/Resources/Help/ims-help.html. Copy it locally to preview;
+## never commit it, or the published manual can drift from the shipped one.
+site/help/
