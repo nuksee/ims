@@ -507,12 +507,13 @@ pre code { background: none; padding: 0; font-size: 1em; }
   <!-- F4 · Step sequence — the four v1 capabilities, in the order you meet them -->
   <section class="band--tight shell">
     <figure class="shot">
-      <img src="img/Screenshot01.png" width="1960" height="1221"
+      <img src="img/Screenshot01.png" width="1528" height="1011"
            fetchpriority="high" decoding="async"
-           alt="The IMS main window: saved connections and the object tree on the left, a SQL editor with two query tabs above a result grid on the right, and a status bar reporting the Client SDK version and the connected server.">
+           alt="The IMS main window: saved connections and the object tree on the left; on the right a query toolbar, a SQL editor tab, and a result grid of 100 rows; a status bar reporting the Client SDK version and the connected server.">
       <figcaption>
-        Connections and objects on the left, editor and results on the right. The status bar carries
-        the Client SDK version and what you are connected to.
+        Connections and objects on the left, editor and results on the right. The toolbar above the
+        editor carries the query actions, and greys out the ones that need a connection. The status
+        bar carries the Client SDK version and what you are connected to.
       </figcaption>
     </figure>
   </section>
@@ -545,8 +546,9 @@ pre code { background: none; padding: 0; font-size: 1em; }
           <p class="stage__body">
             Tables, views, synonyms, sequences, procedures, functions and indexes, grouped by owner.
             Nodes load their children on demand rather than reading the whole catalogue at connect
-            time, so opening a large schema does not stall. Selecting an object shows its
-            definition; for a view, that is the source Informix itself holds.
+            time, so opening a large schema does not stall. Opening an object gives it a tab of its
+            own, beside the query tabs, showing its definition; for a view, that is the source
+            Informix itself holds.
           </p>
           <span class="stage__state">Built · user-defined types not yet listed</span>
         </div>
@@ -560,6 +562,12 @@ pre code { background: none; padding: 0; font-size: 1em; }
             Informix SQL and SPL highlighting. Each tab holds one script with its own connection and
             its own results, so a long query in one tab does not block work in another. Select text
             and run to execute only the selection.
+          </p>
+          <p class="stage__body">
+            A toolbar above the editor carries the same actions, so none of them depends on knowing
+            its key. It names the instance the current tab runs against, greys out everything that
+            needs a connection until there is one, and turns Execute into Cancel while a statement
+            is running.
           </p>
           <p class="stage__body">
             Rows are fetched in blocks rather than all at once, so a large result starts displaying
