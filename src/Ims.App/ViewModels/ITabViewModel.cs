@@ -1,4 +1,4 @@
-namespace Ims.App.ViewModels;
+﻿namespace Ims.App.ViewModels;
 
 /// <summary>
 /// What the tab strip needs of anything it can show.

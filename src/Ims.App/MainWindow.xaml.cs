@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Text;
 using System.Windows;
 using System.Windows.Controls;
@@ -74,6 +74,15 @@ public partial class MainWindow : Window
 
     private EditorTabViewModel? _editorBoundTo;
     private CompletionWindow? _completionWindow;
+
+    // The results pane's row heights while it is showing, so a detail tab can zero
+    // them and give the space back, then restore whatever the user had dragged to.
+    // Seeded with the XAML's own values for the case where the first tab selected is
+    // a detail one and there has been nothing to remember yet.
+    private const double ResultsMinHeight = 120;
+
+    private GridLength _resultsRowHeight = new(1, GridUnitType.Star);
+    private GridLength _resultsSplitterRowHeight = new(4);
 
     public MainWindow(
         MainViewModel viewModel,
@@ -303,11 +312,25 @@ public partial class MainWindow : Window
     /// Shows whichever of the two documents the selected tab is.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The tab strip renders no content of its own — one shared AvalonEdit lives
     /// beside it — so the swap is done here rather than by a ContentTemplate. The
     /// results area goes with the editor: Results and Messages describe a statement,
     /// and leaving another tab's grid under an object's detail would say they were
     /// about the same thing.
+    /// </para>
+    /// <para>
+    /// Collapsing the results TabControl and its splitter is not enough. Their row is
+    /// <c>Height="*" MinHeight="120"</c>, and a row keeps its star share and its
+    /// minimum whether or not the child in it is visible — so hiding the pane left a
+    /// blank band of its exact size under the detail, which is what it was supposed to
+    /// reclaim. The row heights have to go to zero with it.
+    /// </para>
+    /// <para>
+    /// The star share is remembered rather than recomputed, so a splitter the user has
+    /// dragged comes back where they left it. Restoring a hardcoded <c>1*</c> would
+    /// silently undo their drag every time they looked at an object.
+    /// </para>
     /// </remarks>
     private void ShowHostForSelectedTab()
     {
@@ -319,6 +342,27 @@ public partial class MainWindow : Window
         EditorHost.Visibility = detail ? Visibility.Collapsed : Visibility.Visible;
         ResultsArea.Visibility = detail ? Visibility.Collapsed : Visibility.Visible;
         ResultsSplitter.Visibility = detail ? Visibility.Collapsed : Visibility.Visible;
+
+        if (detail)
+        {
+            // Only remember a height that is actually the pane's, or switching between
+            // two detail tabs would record the zeroes and lose the proportion.
+            if (ResultsRow.Height.Value > 0)
+            {
+                _resultsRowHeight = ResultsRow.Height;
+                _resultsSplitterRowHeight = ResultsSplitterRow.Height;
+            }
+
+            ResultsRow.MinHeight = 0;
+            ResultsRow.Height = new GridLength(0);
+            ResultsSplitterRow.Height = new GridLength(0);
+        }
+        else
+        {
+            ResultsRow.MinHeight = ResultsMinHeight;
+            ResultsRow.Height = _resultsRowHeight;
+            ResultsSplitterRow.Height = _resultsSplitterRowHeight;
+        }
     }
 
     private void OnTabChanged(object sender, SelectionChangedEventArgs e)

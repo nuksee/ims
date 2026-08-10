@@ -1,4 +1,4 @@
-<Window x:Class="Ims.App.MainWindow"
+﻿<Window x:Class="Ims.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:Ims.App"
@@ -36,7 +36,7 @@
       own, so it is a tab of its own.
 
       Bound to a TableDetailViewModel, not to the ObjectDetailTabViewModel that owns
-      it â€” the host sets Content to the inner view model, which is why every binding
+      it — the host sets Content to the inner view model, which is why every binding
       in here reads the same as it did as a TabItem.
 
       Every Informix-specific term carries its explanation on the tooltip (NFR-11):
@@ -44,7 +44,7 @@
     -->
     <DataTemplate x:Key="ObjectDetailTemplate" DataType="{x:Type vm:TableDetailViewModel}">
       <Grid>
-        <TextBlock Text="Loadingâ€¦"
+        <TextBlock Text="Loading…"
                    Foreground="#FF5F6368" Margin="10"
                    Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}" />
 
@@ -180,7 +180,7 @@
 
     These are RoutedUICommands declared in code-behind, not {Binding} to view-model
     commands. The first attempt bound to ExecuteCommand on the window's DataContext,
-    which is MainViewModel â€” but that command lives on EditorTabViewModel, so the
+    which is MainViewModel — but that command lives on EditorTabViewModel, so the
     binding silently resolved to nothing and F5 did exactly that. A routed command
     also reaches the handler when focus is inside the editor, which a KeyBinding on
     the window does not reliably do.
@@ -191,9 +191,9 @@
     <Menu DockPanel.Dock="Top">
       <MenuItem Header="_File">
         <MenuItem Header="_New query" Command="{x:Static local:MainWindow.NewQueryCommand}" />
-        <MenuItem Header="_Openâ€¦" Command="{x:Static local:MainWindow.OpenFileCommand}" />
+        <MenuItem Header="_Open…" Command="{x:Static local:MainWindow.OpenFileCommand}" />
         <MenuItem Header="_Save" Command="{x:Static local:MainWindow.SaveFileCommand}" />
-        <MenuItem Header="Save _asâ€¦" Click="OnSaveFileAs" />
+        <MenuItem Header="Save _as…" Click="OnSaveFileAs" />
         <Separator />
         <MenuItem Header="E_xit" Click="OnExit" />
       </MenuItem>
@@ -209,15 +209,15 @@
         <MenuItem Header="Roll back" Click="OnRollback" />
       </MenuItem>
       <MenuItem Header="_Connection">
-        <MenuItem Header="_New connectionâ€¦" Click="OnNewConnection" />
-        <MenuItem Header="_Edit selectedâ€¦" Click="OnEditConnection" />
+        <MenuItem Header="_New connection…" Click="OnNewConnection" />
+        <MenuItem Header="_Edit selected…" Click="OnEditConnection" />
         <MenuItem Header="_Remove selected" Click="OnRemoveConnection" />
       </MenuItem>
       <MenuItem Header="_Results">
-        <MenuItem Header="Export to _CSVâ€¦" Click="OnExportCsv" />
-        <MenuItem Header="Export to _tab-delimitedâ€¦" Click="OnExportTsv" />
-        <MenuItem Header="Export to _JSONâ€¦" Click="OnExportJson" />
-        <MenuItem Header="Export to _Excelâ€¦" Click="OnExportExcel" />
+        <MenuItem Header="Export to _CSV…" Click="OnExportCsv" />
+        <MenuItem Header="Export to _tab-delimited…" Click="OnExportTsv" />
+        <MenuItem Header="Export to _JSON…" Click="OnExportJson" />
+        <MenuItem Header="Export to _Excel…" Click="OnExportExcel" />
         <Separator />
         <MenuItem Header="Copy selection" Click="OnCopySelection" />
         <MenuItem Header="Fetch more rows" Click="OnFetchMore" />
@@ -225,7 +225,7 @@
       <MenuItem Header="_Help">
         <MenuItem Header="_Contents" Command="{x:Static local:MainWindow.HelpContentsCommand}" />
         <Separator />
-        <MenuItem Header="Query _historyâ€¦" Click="OnShowHistory" />
+        <MenuItem Header="Query _history…" Click="OnShowHistory" />
         <MenuItem Header="_About IMS" Click="OnAbout" />
       </MenuItem>
     </Menu>
@@ -296,7 +296,7 @@
                                      RelativeSource={RelativeSource Self},
                                      Converter={StaticResource BoolToVisibility}}" />
               <Separator />
-              <MenuItem Header="_Editâ€¦" Click="OnEditConnection" />
+              <MenuItem Header="_Edit…" Click="OnEditConnection" />
               <MenuItem Header="_Remove" Click="OnRemoveConnection" />
             </ContextMenu>
           </ListBox.Resources>
@@ -342,7 +342,7 @@
                 </Border>
 
                 <!-- A database and host name runs long, and as one unwrapped line it
-                     set the whole row's width â€” widening the item past the list's
+                     set the whole row's width — widening the item past the list's
                      viewport and carrying the badge in column 1 off the right edge
                      with it. Elided, so the row is only ever as wide as the list. -->
                 <TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2"
@@ -380,7 +380,7 @@
                    IsEnabled="{Binding ObjectTree, Converter={StaticResource NotNullToBool}}"
                    AutomationProperties.Name="Filter objects by name" />
 
-          <Button Grid.Column="1" Content="âŸ³" Margin="4,0,0,0" Padding="7,2"
+          <Button Grid.Column="1" Content="⟳" Margin="4,0,0,0" Padding="7,2"
                   ToolTip="Refresh the selected node"
                   Click="OnRefreshTreeNode"
                   AutomationProperties.Name="Refresh" />
@@ -432,7 +432,7 @@
                         Click="OnCopyQualifiedName"
                         IsEnabled="{Binding ObjectTree.HasSelectedObject, FallbackValue=False}" />
               <Separator />
-              <MenuItem Header="Show the catalogue _queryâ€¦" Click="OnShowCatalogQuery" />
+              <MenuItem Header="Show the catalogue _query…" Click="OnShowCatalogQuery" />
               <MenuItem Header="_Refresh" Click="OnRefreshTreeNode" />
             </ContextMenu>
           </TreeView.ContextMenu>
@@ -443,7 +443,7 @@
               <StackPanel Orientation="Horizontal">
                 <TextBlock Text="{Binding Glyph}" Margin="0,0,5,0" />
                 <TextBlock Text="{Binding Name}" FontWeight="SemiBold" />
-                <TextBlock Text="  (loadingâ€¦)" Foreground="#FF5F6368"
+                <TextBlock Text="  (loading…)" Foreground="#FF5F6368"
                            Visibility="{Binding IsLoading, Converter={StaticResource BoolToVisibility}}" />
               </StackPanel>
             </HierarchicalDataTemplate>
@@ -469,12 +469,21 @@
                     Background="#FFE0E0E0" />
 
       <!-- Editor and results -->
+      <!--
+        Rows 2 and 3 are named because a detail tab gives them up. Collapsing the
+        splitter and the results TabControl is not enough on its own: the row keeps
+        its star share and its MinHeight either way, so the pane went invisible and
+        left its space behind as a blank band under the detail. Code-behind zeroes
+        the two heights with it and restores them for an editor tab — the star share
+        rather than a measured height, so a splitter the user has dragged keeps the
+        proportion they set.
+      -->
       <Grid Grid.Column="2" Margin="0,6,6,6">
         <Grid.RowDefinitions>
           <RowDefinition Height="Auto" />
           <RowDefinition Height="*" MinHeight="120" />
-          <RowDefinition Height="4" />
-          <RowDefinition Height="*" MinHeight="120" />
+          <RowDefinition x:Name="ResultsSplitterRow" Height="4" />
+          <RowDefinition x:Name="ResultsRow" Height="*" MinHeight="120" />
         </Grid.RowDefinitions>
 
         <!-- Tab headers only. One editor control is shared between tabs, which keeps
@@ -482,7 +491,7 @@
         <!--
           One row that scrolls, rather than WPF's default of wrapping onto extra rows.
           TabPanel wraps once the headers no longer fit, but this strip is a fixed 26px
-          â€” so the second row was drawn outside it and those tabs became unreachable.
+          — so the second row was drawn outside it and those tabs became unreachable.
           Growing instead would be worse: the strip would eat the editor a row at a
           time, and tabs would jump between rows as the selected one is promoted.
 
@@ -492,7 +501,7 @@
 
           The scrollbar itself is hidden rather than Auto. A visible horizontal bar is
           laid out *inside* the scroller, so it took ~17 of the strip's 26px the moment
-          the tabs overflowed â€” leaving the headers a few pixels tall and looking cut
+          the tabs overflowed — leaving the headers a few pixels tall and looking cut
           off, which is the clipping this was supposed to have fixed. Scrolling is
           driven by the mouse wheel over the strip and by keeping the selected tab in
           view (see MainWindow.xaml.cs), so nothing is lost by not drawing the bar.
@@ -500,7 +509,7 @@
           The height is 30 rather than the old 26. WPF promotes the selected tab a
           couple of pixels past the others, so a header measures ~2px taller than the
           plain ones and 26 cut its bottom edge. Dropping the height and letting the
-          row measure is not the answer â€” a ScrollViewer does not pass its content's
+          row measure is not the answer — a ScrollViewer does not pass its content's
           desired height up, so the strip collapsed to 20px instead.
         -->
         <TabControl x:Name="TabHeaders" Grid.Row="0"
@@ -535,7 +544,7 @@
             item template so the whole header is the target: aiming at the label is
             not how anyone middle-clicks a tab.
 
-            It is an addition to the âœ• button, never a replacement â€” NFR-8 needs a
+            It is an addition to the ✕ button, never a replacement — NFR-8 needs a
             way to close a tab that does not require a three-button mouse.
           -->
           <TabControl.ItemContainerStyle>
@@ -552,10 +561,10 @@
                 <TextBlock Text="{Binding Title}" VerticalAlignment="Center"
                            MaxWidth="180" TextTrimming="CharacterEllipsis"
                            ToolTip="{Binding Title}" />
-                <Button Content="âœ•" Margin="6,0,0,0" Padding="3,0" FontSize="10"
+                <Button Content="✕" Margin="6,0,0,0" Padding="3,0" FontSize="10"
                         BorderThickness="0" Background="Transparent"
                         Click="OnCloseTab"
-                        ToolTip="Close this tab â€” or middle-click the tab"
+                        ToolTip="Close this tab — or middle-click the tab"
                         AutomationProperties.Name="Close tab" />
               </StackPanel>
             </DataTemplate>
@@ -569,7 +578,7 @@
           Row 1 is whichever document the selected tab is: the shared editor, or an
           object's detail. They are siblings toggled from code-behind rather than a
           ContentTemplate on the strip above, because that strip deliberately renders
-          no content â€” see the comments on TabHeaders. One AvalonEdit serves every
+          no content — see the comments on TabHeaders. One AvalonEdit serves every
           editor tab and it has to stay outside.
         -->
         <Grid Grid.Row="1">
@@ -581,7 +590,7 @@
               transient and this has to survive the moment: the user's query is still
               consuming server CPU and the way to stop it is in this text.
 
-              Not colour-alone (NFR-8): the wording carries the meaning and the âš  gives
+              Not colour-alone (NFR-8): the wording carries the meaning and the ⚠ gives
               it a shape, so the amber is decoration rather than the signal.
             -->
             <Border DockPanel.Dock="Top"
@@ -590,9 +599,9 @@
                     Visibility="{Binding SelectedTab.CancelNotice,
                                  Converter={StaticResource NotNullToVisibility}}">
               <DockPanel>
-                <TextBlock DockPanel.Dock="Left" Text="âš " FontSize="14" Margin="0,0,8,0"
+                <TextBlock DockPanel.Dock="Left" Text="⚠" FontSize="14" Margin="0,0,8,0"
                            VerticalAlignment="Top" />
-                <Button DockPanel.Dock="Right" Content="âœ•" Padding="4,0" FontSize="10"
+                <Button DockPanel.Dock="Right" Content="✕" Padding="4,0" FontSize="10"
                         BorderThickness="0" Background="Transparent"
                         VerticalAlignment="Top"
                         Click="OnDismissCancelNotice"

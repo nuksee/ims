@@ -1,4 +1,4 @@
-# IMS — Implementation To-Do
+﻿# IMS — Implementation To-Do
 
 Derived from [PRD-Informix-Management-Studio.md](PRD-Informix-Management-Studio.md) v0.3.
 Ordered by the four slices in PRD §5. Every task carries the requirement ID it satisfies;
