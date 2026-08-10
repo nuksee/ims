@@ -59,11 +59,7 @@ PRD — if a piece of code looks over-constrained, the reason is there.
 - **.NET SDK 9.0.311** or a later 9.0 feature band (pinned in [global.json](global.json))
 - **IBM Informix Client SDK**, with the `IBM INFORMIX ODBC DRIVER (64-bit)` registered.
   Developed against CSDK 4.10.FC1DE.
-<<<<<<< HEAD
   ([what it is and how to install it](https://www.ibm.com/docs/en/informix-servers/14.10.0?topic=sdk-preparing-install-client)
-=======
-  ([what it is and how to install it](https://www.ibm.com/docs/en/informix-servers/14.10?topic=client-sdk)
->>>>>>> 67f1d971fc61668b1fe37f99d3a8a58900b67108
   · [download from Fix Central](https://www.ibm.com/support/fixcentral/) — search for
   *Informix Client Software Development Kit*; an IBMid and an entitled account are required)
 
