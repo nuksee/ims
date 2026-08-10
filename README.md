@@ -1,12 +1,12 @@
 # Informix Management Studio (IMS)
 
-A Windows desktop application for working with IBM Informix — the tool SQL Server Management
+A Windows desktop application for working with IBM Informix: the tool SQL Server Management
 Studio is for SQL Server. One window in which to connect to a server, browse its objects,
 write and run SQL, and see what the server is doing.
 
 Informix has no equivalent today: SQL goes through `dbaccess`, object definitions through
 `dbschema`, diagnostics through the `onstat` family, and generic JDBC clients treat Informix as
-a lowest-common-denominator target. IMS v1 covers four capabilities — connection management,
+a lowest-common-denominator target. IMS v1 covers four capabilities: connection management,
 object browser, SQL editor with a usable result grid, and a read-only session monitor.
 
 **IMS performs no administrative changes of its own.** Every statement it sends is one the user
@@ -14,19 +14,19 @@ typed or explicitly requested. Gating is done by Informix privileges, not by IMS
 constraint is what makes it safe to point at production and safe to hand to a colleague.
 
 > **Status: pilot.** Three of the four v1 capabilities are built and in use against a live
-> 14.10 instance — connection management, the object browser, and the SQL editor with its
+> 14.10 instance: connection management, the object browser, and the SQL editor with its
 > result grid. The **session monitor (Slice 3) is not started**, so "see what the server is
 > doing" above describes the goal, not today's build.
 >
 > Two known gaps are worth knowing before you rely on it:
 >
 > - **Cancelling a running statement does not work** (PR-3.5). The session survives, but the
->   statement runs on to completion while the UI hands control back — so the gesture is
+>   statement runs on to completion while the UI hands control back, so the gesture is
 >   currently worse than its absence. Measured against 14.10; the driver does not implement the
 >   asynchronous execution this needs.
 > - **User-defined types are missing from the object tree** (PR-2.1), descoped rather than
->   diagnosed. Everything else — tables, views, synonyms, sequences, procedures, functions,
->   indexes — lists correctly.
+>   diagnosed. Everything else (tables, views, synonyms, sequences, procedures, functions,
+>   indexes) lists correctly.
 >
 > [IMPLEMENTATION-TODO.md](docs/IMPLEMENTATION-TODO.md) records exactly what is and isn't
 > built, item by item.
@@ -38,7 +38,7 @@ constraint is what makes it safe to point at production and safe to hand to a co
 ## Getting it
 
 [**Releases**](https://github.com/nuksee/ims/releases) carry a pilot build: unzip it and run
-`Ims.exe`. No installer and no administrator rights — the .NET runtime travels in the folder.
+`Ims.exe`. No installer and no administrator rights: the .NET runtime travels in the folder.
 The Client SDK below is still required and is not included.
 
 Releases are marked pre-release while the status above says pilot.
@@ -51,7 +51,7 @@ Releases are marked pre-release while the status above says pilot.
 | [IMPLEMENTATION-TODO.md](docs/IMPLEMENTATION-TODO.md) | Task list per slice, each traced back to a PRD requirement ID |
 
 Code comments cite requirement IDs (`PR-3.5`, `DEC-4`, `NFR-1`, …). They all resolve against the
-PRD — if a piece of code looks over-constrained, the reason is there.
+PRD; if a piece of code looks over-constrained, the reason is there.
 
 ## Prerequisites
 
@@ -60,15 +60,15 @@ PRD — if a piece of code looks over-constrained, the reason is there.
 - **IBM Informix Client SDK**, with the `IBM INFORMIX ODBC DRIVER (64-bit)` registered.
   Developed against CSDK 4.10.FC1DE.
   ([what it is and how to install it](https://www.ibm.com/docs/en/informix-servers/14.10.0?topic=sdk-preparing-install-client)
-  · [download from Fix Central](https://www.ibm.com/support/fixcentral/) — search for
+  · [download from Fix Central](https://www.ibm.com/support/fixcentral/), search for
   *Informix Client Software Development Kit*; an IBMid and an entitled account are required)
 
-The CSDK is **required but not bundled** — IMS assumes no redistribution rights for IBM client
+The CSDK is **required but not bundled**: IMS assumes no redistribution rights for IBM client
 libraries, so it must be installed separately. A build and the full test suite run fine without
 it; only actually talking to a server needs it.
 
 If your organisation already runs Informix it is often installed with the server tooling, or
-your DBA can point you at the copy already licensed — usually quicker than going through Fix
+your DBA can point you at the copy already licensed, usually quicker than going through Fix
 Central yourself.
 
 ## Build and test
@@ -89,7 +89,7 @@ dotnet run --project src/Ims.App
 ```
 
 If the Client SDK is missing or misconfigured, IMS shows a prerequisite window explaining what is
-wrong and how to fix it — rather than failing later as an unexplained connection error. Logs are
+wrong and how to fix it, rather than failing later as an unexplained connection error. Logs are
 written to `%LOCALAPPDATA%\IMS\logs`, with credentials and result data redacted at the logging
 provider boundary.
 
@@ -108,7 +108,7 @@ NFR-7 asks that IMS install without local administrator rights, and installing t
 runtime on a managed workstation is an administrator action. Carrying the runtime makes it copy-and-run. It targets
 `win-x64` because a 64-bit process is the only kind that can load the 64-bit Informix ODBC driver.
 
-The CSDK is still **not** bundled (DEC-10), so the folder is useless on a machine without it —
+The CSDK is still **not** bundled (DEC-10), so the folder is useless on a machine without it,
 which IMS reports at startup as a prerequisite failure rather than a confusing connection error.
 
 ## The smoke test
@@ -129,7 +129,7 @@ on the command line. **Point it at a non-production instance only.** Probes that
 the server (streaming, cancellation) are off unless you pass `--include-load`.
 
 It has been run against a live 14.10 instance, and its findings are recorded in Slice 0 of
-[IMPLEMENTATION-TODO.md](docs/IMPLEMENTATION-TODO.md) — including the two that changed the
+[IMPLEMENTATION-TODO.md](docs/IMPLEMENTATION-TODO.md), including the two that changed the
 plan: the driver streams rather than buffers a result set, and it does not implement the
 asynchronous execution that PR-3.5's cancel needs.
 
@@ -144,13 +144,13 @@ tests/
   Ims.Core.Tests
   Ims.Data.Informix.Tests
 tools/
-  Ims.SmokeTest        Slice 0 provider spike — needs a live server
+  Ims.SmokeTest        Slice 0 provider spike, needs a live server
 docs/                  PRD and implementation to-do
 ```
 
 `Ims.Core` deliberately stays free of any Windows dependency so a later cross-platform client is
 not precluded. `Ims.App` supplies the UI-thread detector that `ServerCallGuard` uses to throw
-when a server round trip is attempted on the dispatcher thread — the UI never blocks on network
+when a server round trip is attempted on the dispatcher thread; the UI never blocks on network
 work.
 
 `DependencyPolicyTests` fails the build if a telemetry package or a redistributed IBM client
@@ -163,14 +163,14 @@ library enters the dependency graph.
   registered Informix ODBC driver. This still speaks the native SQLI protocol.
 - **Informix 14.10 supported.** Tested against 14.10. 12.10 was descoped for v1 on
   2026-08-06: it is untested, not refused. Because IMS detects capabilities rather than branching on
-  version number, a 12.10 server may work and should degrade rather than fail — but nothing about it
+  version number, a 12.10 server may work and should degrade rather than fail, but nothing about it
   has been verified, so treat it as unsupported.
 - **Credentials live in Windows Credential Manager**, never in a config file.
 - **No telemetry**, enforced by test rather than by intention.
 
 ## Contributing
 
-Solo, part-time build. Work proceeds in vertical slices, each independently usable — if it stalls
+Solo, part-time build. Work proceeds in vertical slices, each independently usable: if it stalls
 partway, what exists should still be worth using. New ideas go into PRD §8 (deferred scope) first
 and stay there.
 
@@ -178,5 +178,5 @@ and stay there.
 
 [Apache License 2.0](LICENSE). Copyright 2026 Kaveh Shahbazi.
 
-The IBM Informix Client SDK is **not** covered by that licence and is not redistributed here —
+The IBM Informix Client SDK is **not** covered by that licence and is not redistributed here;
 it remains subject to IBM's own terms and must be installed separately (DEC-10).
