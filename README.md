@@ -13,14 +13,35 @@ object browser, SQL editor with a usable result grid, and a read-only session mo
 typed or explicitly requested. Gating is done by Informix privileges, not by IMS. That single
 constraint is what makes it safe to point at production and safe to hand to a colleague.
 
-> **Status: early.** Slice 0 (foundation) is largely complete; Slice 1 (connect and query) is in
-> progress. The application currently starts, detects the Client SDK, and reports a missing or
-> misconfigured one — there is no connection UI yet. See
-> [IMPLEMENTATION-TODO.md](docs/IMPLEMENTATION-TODO.md) for exactly what is and isn't built.
+> **Status: pilot.** Three of the four v1 capabilities are built and in use against a live
+> 14.10 instance — connection management, the object browser, and the SQL editor with its
+> result grid. The **session monitor (Slice 3) is not started**, so "see what the server is
+> doing" above describes the goal, not today's build.
+>
+> Two known gaps are worth knowing before you rely on it:
+>
+> - **Cancelling a running statement does not work** (PR-3.5). The session survives, but the
+>   statement runs on to completion while the UI hands control back — so the gesture is
+>   currently worse than its absence. Measured against 14.10; the driver does not implement the
+>   asynchronous execution this needs.
+> - **User-defined types are missing from the object tree** (PR-2.1), descoped rather than
+>   diagnosed. Everything else — tables, views, synonyms, sequences, procedures, functions,
+>   indexes — lists correctly.
+>
+> [IMPLEMENTATION-TODO.md](docs/IMPLEMENTATION-TODO.md) records exactly what is and isn't
+> built, item by item.
 >
 > Unsupported, provided as-is, and not a replacement for the Informix CLI.
 
 ---
+
+## Getting it
+
+[**Releases**](https://github.com/nuksee/ims/releases) carry a pilot build: unzip it and run
+`Ims.exe`. No installer and no administrator rights — the .NET runtime travels in the folder.
+The Client SDK below is still required and is not included.
+
+Releases are marked pre-release while the status above says pilot.
 
 ## Documentation
 
@@ -75,9 +96,9 @@ Output lands in `publish/pilot/`. Give people a zip of that folder together with
 [docs/PILOT-INSTALL.md](docs/PILOT-INSTALL.md), which is written for them rather than for a
 developer.
 
-The build is **self-contained** (~165 MB, 289 files) and that is the point: NFR-7 asks that IMS
-install without local administrator rights, and installing the .NET desktop runtime on a managed
-workstation is an administrator action. Carrying the runtime makes it copy-and-run. It targets
+The build is **self-contained** (~183 MB across 303 files, ~77 MB zipped) and that is the point:
+NFR-7 asks that IMS install without local administrator rights, and installing the .NET desktop
+runtime on a managed workstation is an administrator action. Carrying the runtime makes it copy-and-run. It targets
 `win-x64` because a 64-bit process is the only kind that can load the 64-bit Informix ODBC driver.
 
 The CSDK is still **not** bundled (DEC-10), so the folder is useless on a machine without it —
@@ -100,8 +121,10 @@ It reads only, prints every statement it sends, and prompts for the password rat
 on the command line. **Point it at a non-production instance only.** Probes that put real load on
 the server (streaming, cancellation) are off unless you pass `--include-load`.
 
-It has not yet been run against a live server, which is why several Slice 0 items are marked
-delivered-but-unverified.
+It has been run against a live 14.10 instance, and its findings are recorded in Slice 0 of
+[IMPLEMENTATION-TODO.md](docs/IMPLEMENTATION-TODO.md) — including the two that changed the
+plan: the driver streams rather than buffers a result set, and it does not implement the
+asynchronous execution that PR-3.5's cancel needs.
 
 ## Layout
 
