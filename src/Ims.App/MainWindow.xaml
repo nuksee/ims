@@ -30,6 +30,7 @@
     <local:TransactionStateConverter x:Key="TransactionText" />
     <local:StatementOutcomeConverter x:Key="OutcomeText" />
     <local:UnknownIfNullConverter x:Key="UnknownIfNull" />
+    <local:NotBooleanConverter x:Key="NotBool" />
 
     <!--
       Object detail (PR-2.4), shown in the tab strip beside the editors rather than
@@ -244,7 +245,14 @@
 
         <!-- Refresh control (PR-5.5) and the filter (PR-5.4). -->
         <DockPanel Grid.Row="1" Margin="0,0,0,6">
+          <!--
+            Disabled while a read is in flight. RefreshAsync already returns early in that
+            case, so this is not what prevents a double read — it is what stops the button
+            looking available when pressing it would do nothing.
+          -->
           <Button DockPanel.Dock="Left" Command="{Binding RefreshCommand}"
+                  IsEnabled="{Binding IsReading,
+                              Converter={StaticResource NotBool}, FallbackValue=True}"
                   Padding="6,2" Margin="0,0,6,0"
                   ToolTip="Read the session list now"
                   AutomationProperties.Name="Refresh the session list">
@@ -285,8 +293,26 @@
 
         <!-- When the list was read, and what IMS could establish about blocking. -->
         <DockPanel Grid.Row="2" Margin="0,0,0,6">
+          <!--
+            While a read is in flight this replaces the timestamp rather than sitting beside
+            it: the two say the same thing at different moments, and "Read at 14:02:11" next
+            to "Reading…" invites the question of which is true now.
+
+            A word, not a spinner (NFR-8). Because these queries are bounded and small, a
+            refresh usually returns too fast to see — so the point of this is the case where
+            it does not: a monitor queueing behind a tree expansion, or a syslocks query
+            running to its 10s timeout, which is a measured outcome on this estate rather than
+            a hypothetical.
+          -->
+          <TextBlock DockPanel.Dock="Right" Text="Reading…"
+                     Foreground="#FF5F6368" FontStyle="Italic"
+                     Visibility="{Binding IsReading, Converter={StaticResource BoolToVisibility}}"
+                     AutomationProperties.Name="Reading the session list" />
           <TextBlock DockPanel.Dock="Right" Text="{Binding ReadAtLabel}"
                      Foreground="#FF5F6368"
+                     Visibility="{Binding IsReading,
+                                  Converter={StaticResource BoolToVisibility},
+                                  ConverterParameter=Invert}"
                      AutomationProperties.Name="When the list was read" />
           <TextBlock Text="{Binding FidelityLabel}" TextWrapping="Wrap"
                      Foreground="#FF3C4043"
@@ -354,9 +380,22 @@
                        Visibility="{Binding Notice, Converter={StaticResource NotNullToVisibility}}"
                        AutomationProperties.Name="Notice" />
 
+            <!--
+              Reading takes precedence over the prompt: Detail is null while a read is in
+              flight too, so without this, selecting a session would show "Select a session"
+              for as long as the read took — which on this estate can be the ten seconds a
+              syslocks query spends reaching its timeout.
+            -->
+            <TextBlock Text="Reading session detail…"
+                       Foreground="#FF5F6368" FontStyle="Italic" Margin="0,6,0,0"
+                       Visibility="{Binding IsReadingDetail,
+                                    Converter={StaticResource BoolToVisibility}}"
+                       AutomationProperties.Name="Reading session detail" />
+
             <TextBlock Text="Select a session to see its locks and what it is running."
                        Foreground="#FF5F6368" Margin="0,6,0,0"
-                       Visibility="{Binding Detail, Converter={StaticResource NullToVisibility}}" />
+                       Visibility="{Binding ShowSelectSessionPrompt,
+                                    Converter={StaticResource BoolToVisibility}}" />
 
             <StackPanel Visibility="{Binding Detail, Converter={StaticResource NotNullToVisibility}}">
 

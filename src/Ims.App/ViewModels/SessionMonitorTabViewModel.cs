@@ -65,6 +65,18 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
     [ObservableProperty]
     private bool _isReading;
 
+    /// <summary>
+    /// True while the selected session's detail is being read (PR-5.2).
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="IsReading"/> rather than shared with it. The two are
+    /// independent reads and the list's Refresh must stay usable while a detail read is in
+    /// flight — and on this estate the detail read is the slower of the two, because it is the
+    /// one that can spend ten seconds reaching its timeout on <c>syslocks</c>.
+    /// </remarks>
+    [ObservableProperty]
+    private bool _isReadingDetail;
+
     [ObservableProperty]
     private string? _notice;
 
@@ -205,6 +217,19 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
 
     /// <summary>True when there is anything to show at all.</summary>
     public bool HasSessions => !_sessions.IsEmpty();
+
+    /// <summary>
+    /// True when the detail pane should ask the user to pick a session.
+    /// </summary>
+    /// <remarks>
+    /// All three conditions matter, which is why this is one property rather than a stack of
+    /// converters in the XAML. <see cref="Detail"/> is null both before a session is chosen and
+    /// while one is being read, so binding the prompt to it alone showed "Select a session" for
+    /// the whole of a read — and on this estate a detail read can spend ten seconds reaching a
+    /// <c>syslocks</c> timeout.
+    /// </remarks>
+    public bool ShowSelectSessionPrompt =>
+        SelectedSession is null && Detail is null && !IsReadingDetail;
 
     // ---- Refresh ----------------------------------------------------------------
 
@@ -433,6 +458,14 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
 
     partial void OnHideSystemSessionsChanged(bool value) => Sessions.Refresh();
 
+    // ShowSelectSessionPrompt reads all three of these, and derived properties in this app are
+    // raised by hand rather than through [NotifyPropertyChangedFor].
+    partial void OnDetailChanged(SessionDetail? value) =>
+        OnPropertyChanged(nameof(ShowSelectSessionPrompt));
+
+    partial void OnIsReadingDetailChanged(bool value) =>
+        OnPropertyChanged(nameof(ShowSelectSessionPrompt));
+
     /// <summary>
     /// Reads the selected session's detail (PR-5.2).
     /// </summary>
@@ -446,9 +479,11 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
         Detail = null;
         OnPropertyChanged(nameof(DetailQueries));
         OnPropertyChanged(nameof(QueryText));
+        OnPropertyChanged(nameof(ShowSelectSessionPrompt));
 
         if (value is null)
         {
+            IsReadingDetail = false;
             return;
         }
 
@@ -457,6 +492,8 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
 
     private async Task ReadDetailAsync(int sid)
     {
+        IsReadingDetail = true;
+
         try
         {
             SessionDetail detail = await Task.Run(
@@ -478,6 +515,16 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
         catch (Exception ex)
         {
             Notice = $"Session {sid} detail could not be read: " + ex.Message;
+        }
+        finally
+        {
+            // Only if this read is still the one being waited for. Arrowing down the list
+            // starts a read per row, and a slow earlier one finishing last would otherwise
+            // clear the indicator while the current row is still loading.
+            if (SelectedSession?.Sid == sid)
+            {
+                IsReadingDetail = false;
+            }
         }
     }
 
