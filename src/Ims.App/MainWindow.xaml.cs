@@ -66,6 +66,14 @@ public partial class MainWindow : Window
         "Help", nameof(HelpContentsCommand), typeof(MainWindow),
         [new KeyGesture(Key.F1)]);
 
+    // PR-5.1. Ctrl+Alt+S rather than a bare Ctrl+S, which is Save — and the monitor is
+    // instance-scoped, so it belongs with the connection gestures rather than the
+    // editor's. Routed like the rest so the menu item shows the shortcut and the gesture
+    // still works with focus inside the editor.
+    public static readonly RoutedUICommand SessionMonitorCommand = new(
+        "Session monitor", nameof(SessionMonitorCommand), typeof(MainWindow),
+        [new KeyGesture(Key.S, ModifierKeys.Control | ModifierKeys.Alt)]);
+
     // No gesture. Clearing is not something anyone reaches for mid-typing, and the
     // free Ctrl combinations with focus in the editor belong to AvalonEdit. It is a
     // routed command rather than a plain Click handler so the toolbar button and any
@@ -123,6 +131,7 @@ public partial class MainWindow : Window
         CommandBindings.Add(new CommandBinding(CompleteCommand, (_, _) => ShowCompletion()));
         CommandBindings.Add(new CommandBinding(HelpContentsCommand, (_, _) => ShowHelpContents()));
         CommandBindings.Add(new CommandBinding(ClearResultsCommand, OnClearResults));
+        CommandBindings.Add(new CommandBinding(SessionMonitorCommand, OnShowSessionMonitor));
 
         LoadSyntaxHighlighting();
 
@@ -317,7 +326,7 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Shows whichever of the two documents the selected tab is.
+    /// Shows whichever of the documents the selected tab is.
     /// </summary>
     /// <remarks>
     /// <para>
@@ -326,6 +335,15 @@ public partial class MainWindow : Window
     /// results area goes with the editor: Results and Messages describe a statement,
     /// and leaving another tab's grid under an object's detail would say they were
     /// about the same thing.
+    /// </para>
+    /// <para>
+    /// Each host is shown for its own kind, and the results area is shown <em>for the
+    /// editor</em> rather than hidden for the one exception. That inversion matters:
+    /// while there were two kinds a single boolean sufficed, but it made the editor the
+    /// default for anything unrecognised — so the session monitor arrived as a
+    /// greyed-out empty editor. Testing for each kind positively means a fourth kind
+    /// shows no document rather than the wrong one, which is the safe direction to
+    /// fail.
     /// </para>
     /// <para>
     /// Collapsing the results TabControl and its splitter is not enough. Their row is
@@ -342,19 +360,28 @@ public partial class MainWindow : Window
     /// </remarks>
     private void ShowHostForSelectedTab()
     {
-        bool detail = _viewModel.SelectedTab is ObjectDetailTabViewModel;
+        ITabViewModel? tab = _viewModel.SelectedTab;
 
-        ObjectDetailHost.Content = (_viewModel.SelectedTab as ObjectDetailTabViewModel)?.Detail;
+        bool isDetail = tab is ObjectDetailTabViewModel;
+        bool isMonitor = tab is SessionMonitorTabViewModel;
+        bool isEditor = tab is EditorTabViewModel;
 
-        ObjectDetailHost.Visibility = detail ? Visibility.Visible : Visibility.Collapsed;
-        EditorHost.Visibility = detail ? Visibility.Collapsed : Visibility.Visible;
-        ResultsArea.Visibility = detail ? Visibility.Collapsed : Visibility.Visible;
-        ResultsSplitter.Visibility = detail ? Visibility.Collapsed : Visibility.Visible;
+        ObjectDetailHost.Content = (tab as ObjectDetailTabViewModel)?.Detail;
+        SessionMonitorHost.Content = tab as SessionMonitorTabViewModel;
 
-        if (detail)
+        ObjectDetailHost.Visibility = isDetail ? Visibility.Visible : Visibility.Collapsed;
+        SessionMonitorHost.Visibility = isMonitor ? Visibility.Visible : Visibility.Collapsed;
+        EditorHost.Visibility = isEditor ? Visibility.Visible : Visibility.Collapsed;
+
+        // Results and Messages describe a statement, so they belong to the editor and
+        // to nothing else.
+        ResultsArea.Visibility = isEditor ? Visibility.Visible : Visibility.Collapsed;
+        ResultsSplitter.Visibility = isEditor ? Visibility.Visible : Visibility.Collapsed;
+
+        if (!isEditor)
         {
             // Only remember a height that is actually the pane's, or switching between
-            // two detail tabs would record the zeroes and lose the proportion.
+            // two non-editor tabs would record the zeroes and lose the proportion.
             if (ResultsRow.Height.Value > 0)
             {
                 _resultsRowHeight = ResultsRow.Height;
@@ -1153,6 +1180,79 @@ public partial class MainWindow : Window
         BindEditorToSelectedTab();
 
         _viewModel.OpenObjectDetailTab(schemaObject);
+
+        BindEditorToSelectedTab();
+    }
+
+    /// <summary>Opens the session monitor for the connected instance (PR-5.1).</summary>
+    /// <remarks>
+    /// The same flush-open-rebind shape as <see cref="OnShowObjectDetail"/>: the editor's
+    /// text has to reach its own tab before the selection moves away from it.
+    /// </remarks>
+    private void OnShowSessionMonitor(object sender, RoutedEventArgs e)
+    {
+        BindEditorToSelectedTab();
+
+        _viewModel.OpenSessionMonitorTab();
+
+        BindEditorToSelectedTab();
+    }
+
+    /// <summary>
+    /// Changes how often the monitor refreshes (PR-5.5).
+    /// </summary>
+    /// <remarks>
+    /// The tag carries the interval in seconds, with zero meaning manual. A handler rather
+    /// than a bound command because the choice is a <c>ComboBox</c> selection and the view
+    /// model takes a <see cref="TimeSpan"/> — translating between them is view work.
+    /// </remarks>
+    private void OnRefreshIntervalChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (sender is not ComboBox combo
+            || combo.SelectedItem is not ComboBoxItem { Tag: string tag }
+            || _viewModel.SelectedTab is not SessionMonitorTabViewModel monitor)
+        {
+            return;
+        }
+
+        if (!int.TryParse(tag, out int seconds) || seconds <= 0)
+        {
+            monitor.SetManual();
+            return;
+        }
+
+        monitor.SetInterval(TimeSpan.FromSeconds(seconds));
+    }
+
+    /// <summary>
+    /// Opens the monitor's queries in an editor tab (PR-8.2).
+    /// </summary>
+    /// <remarks>
+    /// An editor tab rather than a dialog, matching the tree's "Show the catalogue query".
+    /// The point of PR-8.2 is not that the user can read the query but that they can take
+    /// it away, run it, and change it — which is what earns U3's trust.
+    /// </remarks>
+    private void OnOpenSessionQueries(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.SelectedTab is not SessionMonitorTabViewModel monitor)
+        {
+            return;
+        }
+
+        string sql = monitor.QueryText;
+
+        if (string.IsNullOrWhiteSpace(sql))
+        {
+            _viewModel.StatusText = "There are no session queries to show yet — refresh first.";
+            return;
+        }
+
+        BindEditorToSelectedTab();
+
+        _viewModel.NewTab(
+            session: _viewModel.EditorTabs.FirstOrDefault()?.Session,
+            sql: sql,
+            title: "Session queries");
 
         BindEditorToSelectedTab();
     }

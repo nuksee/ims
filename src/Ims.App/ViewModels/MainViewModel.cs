@@ -9,6 +9,7 @@ using Ims.Core.Connections;
 using Ims.Core.Editing;
 using Ims.Core.Data;
 using Ims.Core.History;
+using Ims.Core.Monitoring;
 using Ims.Core.Sql;
 using Microsoft.Extensions.Logging;
 
@@ -394,6 +395,71 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Opens the session monitor for the connected instance (PR-5.1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One monitor per instance: asking again returns to the tab already open rather than
+    /// adding a second set of queries against one server for the same answer.
+    /// </para>
+    /// <para>
+    /// It reads through the tree's reader, so the browser, completion and the monitor share
+    /// one catalogue connection. That is what keeps IMS to one extra session per instance
+    /// (PR-6.4) — at the cost of a refresh queueing behind a tree expansion, which is the
+    /// trade <see cref="ISessionMonitor"/> documents. Without a tree there is no reader, so
+    /// this does nothing.
+    /// </para>
+    /// </remarks>
+    public SessionMonitorTabViewModel? OpenSessionMonitorTab()
+    {
+        if (ObjectTree is not { } tree || tree.Catalog is not ISessionMonitor monitor)
+        {
+            StatusText = "Connect to an instance first — the session monitor reads sysmaster "
+                + "through the object browser's connection.";
+            return null;
+        }
+
+        if (Tabs.OfType<SessionMonitorTabViewModel>()
+                .FirstOrDefault(t => t.Descriptor.Id == tree.Descriptor.Id) is { } open)
+        {
+            SelectedTab = open;
+            return open;
+        }
+
+        var tab = new SessionMonitorTabViewModel(tree.Descriptor, monitor);
+
+        Tabs.Add(tab);
+        SelectedTab = tab;
+
+        // Not awaited: the tab is on screen at once and shows its own empty state until
+        // sysmaster answers.
+        _ = tab.LoadAsync(CancellationToken.None);
+
+        return tab;
+    }
+
+    /// <summary>
+    /// Suspends a monitor being left and resumes the one arrived at (PR-5.5).
+    /// </summary>
+    /// <remarks>
+    /// This hook rather than the code-behind's <c>SelectionChanged</c>, because it also
+    /// fires for a programmatic selection — opening a monitor selects it in code, and the
+    /// poll has to start. The code-behind handler deliberately filters those out.
+    /// </remarks>
+    partial void OnSelectedTabChanged(ITabViewModel? oldValue, ITabViewModel? newValue)
+    {
+        if (oldValue is SessionMonitorTabViewModel left)
+        {
+            left.Deselected();
+        }
+
+        if (newValue is SessionMonitorTabViewModel arrived)
+        {
+            arrived.Selected();
+        }
+    }
+
+    /// <summary>
     /// Closes a tab and picks the next selection.
     /// </summary>
     /// <remarks>
@@ -498,6 +564,16 @@ public sealed partial class MainViewModel : ObservableObject
             }
 
             await tab.DisposeAsync().ConfigureAwait(true);
+        }
+
+        // A second loop rather than widening the first: the autosave logic above is
+        // editor-specific and intricate, and a monitor has nothing to save. What it does
+        // have is a running timer, and the loop above would have left it running — which
+        // would mean a closing IMS still querying a production instance, the one thing
+        // PR-5.5 names outright.
+        foreach (SessionMonitorTabViewModel monitor in Tabs.OfType<SessionMonitorTabViewModel>().ToList())
+        {
+            await monitor.DisposeAsync().ConfigureAwait(true);
         }
 
         foreach (IInformixSession session in _sessions.Values)

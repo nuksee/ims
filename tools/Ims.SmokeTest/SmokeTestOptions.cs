@@ -76,6 +76,25 @@ public sealed class SmokeTestOptions
     /// </remarks>
     public bool RecheckCancellation { get; set; }
 
+    /// <summary>
+    /// Resolves the <c>sysmaster</c> column names the session monitor guesses at (Slice 3).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Slice 3 was built without a live server to check against, so several of its queries name
+    /// columns nobody has confirmed. Each is isolated so a wrong name costs one section of one
+    /// pane rather than the view — but degrading gracefully is not the same as working, and this
+    /// is what settles the difference.
+    /// </para>
+    /// <para>
+    /// Opt-in because it sends a dozen statements to answer a question that only matters when
+    /// someone is about to rely on the monitor. Every one is capped with <c>FIRST</c> and carries
+    /// the usual timeout, so it is bounded before it is sent and safe on a shared instance —
+    /// unlike the load probes, this needs no separate tier.
+    /// </para>
+    /// </remarks>
+    public bool ProbeSessions { get; set; }
+
     public int TimeoutSeconds { get; set; } = 15;
 
     public bool ShowHelp { get; set; }
@@ -122,6 +141,10 @@ public sealed class SmokeTestOptions
 
                 case "--recheck-cancellation":
                     options.RecheckCancellation = true;
+                    continue;
+
+                case "--probe-sessions":
+                    options.ProbeSessions = true;
                     continue;
 
                 case "--include-load":

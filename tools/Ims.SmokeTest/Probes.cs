@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Odbc;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using Ims.Core.Data;
 using Ims.Data.Informix;
 
@@ -56,6 +57,8 @@ public static class Probes
                 results.Add(ProbeResult.Skip("Cancellation", "PR-3.5", "No connection."));
                 results.Add(ProbeResult.Skip("Cancel via SQL_ATTR_ASYNC_ENABLE", "PR-3.5", "No connection."));
                 results.Add(ProbeResult.Skip("sysmaster readable", "Q-1 / AS-3", "No connection."));
+                results.Add(ProbeResult.Skip(
+                    "Session monitor shape", "PR-5.1 / PR-5.2 / PR-5.6", "No connection."));
                 return results;
             }
 
@@ -142,6 +145,23 @@ public static class Probes
 
             results.Add(await SafelyAsync("sysmaster readable", "Q-1 / AS-3",
                 () => SysMasterAsync(connection, cancellationToken)).ConfigureAwait(false));
+
+            // After the Q-1 probe, which gates it: there is no point asking which columns
+            // syssessions exposes if the view cannot be read at all. Opt-in, because it sends
+            // a dozen statements and only matters when someone is about to trust Slice 3.
+            if (options.ProbeSessions)
+            {
+                results.Add(await SafelyAsync("Session monitor shape", "PR-5.1 / PR-5.2 / PR-5.6",
+                    () => SessionMonitorShapeAsync(connection, cancellationToken))
+                    .ConfigureAwait(false));
+            }
+            else
+            {
+                results.Add(ProbeResult.Skip(
+                    "Session monitor shape", "PR-5.1 / PR-5.2 / PR-5.6",
+                    "Needs --probe-sessions. Run it before trusting the session monitor: it "
+                    + "settles which sysmaster columns this server actually exposes."));
+            }
         }
         finally
         {
@@ -839,6 +859,111 @@ public static class Probes
                 + "and its priority should be reconsidered against section 8. " + Describe(ex),
                 sql);
         }
+    }
+
+    /// <summary>
+    /// Resolves the <c>sysmaster</c> shapes Slice 3's session monitor guesses at.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Slice 3 was written without a live server to check against, so several of its queries
+    /// name columns nobody has confirmed. Each is isolated in the reader so a wrong name costs
+    /// one section of one pane, but "it degrades" is not the same as "it works" — this is how
+    /// the guesses get settled.
+    /// </para>
+    /// <para>
+    /// One probe reporting many findings, rather than one probe per object: they answer a
+    /// single question — what shape is this server's sysmaster — and reading that as one
+    /// verdict is more use than ten scattered lines. Every statement is capped with
+    /// <c>FIRST</c> and carries the 30s timeout, so the whole thing is bounded before it is
+    /// sent (RSK-5, PR-6.4).
+    /// </para>
+    /// <para>
+    /// It cannot settle PR-5.3. A real lock wait needs a second session holding a lock, and
+    /// DEP-2 says there is nowhere safe to arrange one — the test database shares a server with
+    /// production. So this reports whether <c>syslocks</c> is <em>readable</em>, and whether a
+    /// blocker can actually be identified stays open.
+    /// </para>
+    /// </remarks>
+    private static async Task<ProbeResult> SessionMonitorShapeAsync(
+        OdbcConnection connection,
+        CancellationToken cancellationToken)
+    {
+        // Column by column: syssessions is confirmed readable (Q-1), so what is in doubt is
+        // which columns it exposes, and asking for them together would say only that one of
+        // them was wrong.
+        (string What, string Sql)[] checks =
+        [
+            ("syssessions.hostname", "SELECT FIRST 1 hostname FROM sysmaster:syssessions"),
+            ("syssessions.pid", "SELECT FIRST 1 pid FROM sysmaster:syssessions"),
+            ("syssessions.feprogram", "SELECT FIRST 1 feprogram FROM sysmaster:syssessions"),
+            ("syssessions.state", "SELECT FIRST 1 state FROM sysmaster:syssessions"),
+            ("syssessions.connected", "SELECT FIRST 1 connected FROM sysmaster:syssessions"),
+            ("syslocks (PR-5.2)",
+                "SELECT FIRST 1 owner, dbsname, tabname, rowidlk, keynum, type FROM sysmaster:syslocks"),
+            ("syslocks.waiter (PR-5.3 — the blocker)",
+                "SELECT FIRST 1 waiter FROM sysmaster:syslocks"),
+            ("syssqlcurses.sqx_* (PR-5.1)",
+                "SELECT FIRST 1 sqx_sessionid, sqx_statement FROM sysmaster:syssqlcurses"),
+            ("sysrstcb memory columns (PR-5.2)",
+                "SELECT FIRST 1 sid, memtotal, memused FROM sysmaster:sysrstcb"),
+            ("sysshmvals.sh_mode (PR-5.6)", "SELECT FIRST 1 sh_mode FROM sysmaster:sysshmvals"),
+            ("sysshmvals.sh_boottime (PR-5.6)", "SELECT FIRST 1 sh_boottime FROM sysmaster:sysshmvals"),
+            ("sysprofile (PR-5.6)",
+                "SELECT FIRST 1 name, value FROM sysmaster:sysprofile WHERE name = 'bufreads'"),
+            ("syscheckpoint (PR-5.6)", "SELECT FIRST 1 MAX(ckpt_time) FROM sysmaster:syscheckpoint"),
+        ];
+
+        List<string> present = [];
+        List<string> absent = [];
+
+        foreach ((string what, string sql) in checks)
+        {
+            try
+            {
+                object? value = await ScalarAsync(connection, sql, cancellationToken)
+                    .ConfigureAwait(false);
+
+                present.Add(value is null ? $"{what} (no rows, but it parsed)" : what);
+            }
+            catch (OdbcException ex)
+            {
+                absent.Add($"{what} — {Describe(ex)}");
+            }
+            catch (ArgumentException ex)
+            {
+                // The INTERVAL trap: System.Data.Odbc throws from inside its type map before
+                // any value conversion. Worth naming explicitly, because the reader's rule is
+                // that no session query may select such a column.
+                absent.Add($"{what} — UNREADABLE TYPE (likely INTERVAL): {ex.Message}");
+            }
+        }
+
+        var detail = new StringBuilder();
+        detail.Append(CultureInfo.InvariantCulture, $"{present.Count} of {checks.Length} present.");
+
+        if (present.Count > 0)
+        {
+            detail.AppendLine().Append("      Present: ").Append(string.Join("; ", present));
+        }
+
+        if (absent.Count > 0)
+        {
+            detail.AppendLine().Append("      ABSENT: ").Append(string.Join("; ", absent));
+            detail.AppendLine().Append(
+                "      Each absent item costs one section of the monitor, not the view. Update "
+                + "SessionQueries.cs with the real names and re-run.");
+        }
+
+        const string name = "Session monitor shape";
+        const string requirement = "PR-5.1 / PR-5.2 / PR-5.6";
+        string statement = string.Join(Environment.NewLine, checks.Select(c => c.Sql));
+
+        // Inconclusive rather than Fail when something is missing: an absent column is a fact
+        // about this server that a human has to act on, not a defect in IMS.
+        return absent.Count == 0
+            ? ProbeResult.Pass(name, requirement, detail.ToString(), statement)
+            : ProbeResult.Inconclusive(name, requirement, detail.ToString(), statement);
     }
 
     private static async Task<object?> ScalarAsync(

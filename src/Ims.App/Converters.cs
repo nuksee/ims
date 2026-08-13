@@ -198,3 +198,52 @@ public sealed class StatementOutcomeConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();
 }
+
+/// <summary>
+/// Renders an indicator that may be absent, as a value or as "Unknown" (PR-5.6, NFR-4).
+/// </summary>
+/// <remarks>
+/// <para>
+/// Every PR-5.6 indicator comes from its own query and any one of them may fail, so the
+/// strip has to be able to say "we could not tell". Blanking the field instead would leave
+/// the user unable to distinguish an unread indicator from one that is genuinely zero.
+/// </para>
+/// <para>
+/// The parameter is an optional format string, so a percentage and an uptime can share one
+/// converter rather than growing one each.
+/// </para>
+/// </remarks>
+public sealed class UnknownIfNullConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is null)
+        {
+            return "Unknown";
+        }
+
+        if (value is TimeSpan uptime)
+        {
+            return uptime.TotalDays >= 1
+                ? $"{(int)uptime.TotalDays}d {uptime.Hours}h"
+                : $"{(int)uptime.TotalHours}h {uptime.Minutes}m";
+        }
+
+        return parameter is string format && !string.IsNullOrEmpty(format)
+            ? string.Format(culture, format, value)
+            : value.ToString() ?? "Unknown";
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>Negates a boolean, for a control that is enabled while something is not happening.</summary>
+public sealed class NotBooleanConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is not true;
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is not true;
+}

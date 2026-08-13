@@ -4,6 +4,7 @@ using System.Text;
 using Ims.Core.Catalog;
 using Ims.Core.Data;
 using Ims.Core.Diagnostics;
+using Ims.Core.Monitoring;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -29,8 +30,14 @@ namespace Ims.Data.Informix.Catalog;
 /// nothing else — that is NFR-4's "degrade gracefully with a clear explanation
 /// rather than failing opaquely", applied at the smallest useful granularity.
 /// </para>
+/// <para>
+/// It also reads live session state (<see cref="ISessionMonitor"/>), which is not schema
+/// and lives in <c>InformixCatalogReader.Sessions.cs</c> — same type, same connection, and
+/// therefore the same one cursor. See that file for why the two capabilities share an
+/// object rather than each having their own.
+/// </para>
 /// </remarks>
-public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
+public sealed partial class InformixCatalogReader : ICatalogReader, ISessionMonitor, IAsyncDisposable
 {
     private readonly string _connectionString;
     private readonly ILogger _logger;
@@ -897,9 +904,25 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
 
     // ---- Plumbing ---------------------------------------------------------------
 
+    /// <summary>The timeout every catalogue query carries, in seconds.</summary>
+    private const int CatalogTimeoutSeconds = 60;
+
+    private Task<IReadOnlyList<T>> QueryAsync<T>(
+        string sql,
+        Func<OdbcDataReader, T> map,
+        CancellationToken cancellationToken,
+        params object?[] parameters) =>
+        QueryAsync(sql, map, CatalogTimeoutSeconds, cancellationToken, parameters);
+
+    /// <param name="timeoutSeconds">
+    /// How long to wait. The session monitor asks for less than the catalogue does:
+    /// because <c>OdbcCommand.Cancel</c> does not reach this server, the timeout is what
+    /// actually ends a statement, so it is the bound that matters.
+    /// </param>
     private async Task<IReadOnlyList<T>> QueryAsync<T>(
         string sql,
         Func<OdbcDataReader, T> map,
+        int timeoutSeconds,
         CancellationToken cancellationToken,
         params object?[] parameters)
     {
@@ -908,24 +931,82 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
         OdbcConnection connection = _connection
             ?? throw new InvalidOperationException("The catalogue reader is not open.");
 
-        using var command = new OdbcCommand(sql, connection) { CommandTimeout = 60 };
+        using var command = new OdbcCommand(sql, connection) { CommandTimeout = timeoutSeconds };
 
         foreach (object? parameter in parameters)
         {
             command.Parameters.AddWithValue(string.Empty, parameter ?? DBNull.Value);
         }
 
-        using OdbcDataReader reader = (OdbcDataReader)await command
-            .ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        // Execute and fetch are timed separately, because only the first is what CommandTimeout
+        // governs. A statement that reports a 10-second timeout after 57 seconds of wall clock
+        // has spent the difference somewhere else — queued behind the semaphore this connection
+        // shares, or inside the driver before the cap starts counting — and one number for the
+        // whole call cannot tell those apart.
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
 
-        var items = new List<T>();
-
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        try
         {
-            items.Add(map(reader));
-        }
+            using OdbcDataReader reader = (OdbcDataReader)await command
+                .ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
-        return items;
+            long executeMs = elapsed.ElapsedMilliseconds;
+
+            var items = new List<T>();
+
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                items.Add(map(reader));
+            }
+
+            // Information for the session monitor's queries, Debug for the catalogue's. The
+            // minimum level is Information (App.xaml.cs), so a Debug line here would never be
+            // written — and the session timings are the ones there is an open question about.
+            // Tree expansion runs a great many catalogue queries and would drown the log, so
+            // those stay at Debug where they can be turned up if ever needed.
+            //
+            // Distinguished by the timeout, which the session monitor sets to its own shorter
+            // value. That is a slightly indirect test, but it beats threading a "who is asking"
+            // flag through every call site to say something the argument already implies.
+            bool isSessionQuery = timeoutSeconds != CatalogTimeoutSeconds;
+
+            if (isSessionQuery)
+            {
+                _logger.LogInformation(
+                    "Query took {ExecuteMs} ms to execute and {FetchMs} ms to fetch {Rows} "
+                    + "row(s), cap {Timeout}s: {Sql}",
+                    executeMs,
+                    elapsed.ElapsedMilliseconds - executeMs,
+                    items.Count,
+                    timeoutSeconds,
+                    Redaction.Sql(sql));
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "Query took {ExecuteMs} ms to execute and {FetchMs} ms to fetch {Rows} "
+                    + "row(s), cap {Timeout}s: {Sql}",
+                    executeMs,
+                    elapsed.ElapsedMilliseconds - executeMs,
+                    items.Count,
+                    timeoutSeconds,
+                    Redaction.Sql(sql));
+            }
+
+            return items;
+        }
+        catch (OdbcException)
+        {
+            // The failure timing is the interesting one for the 57-second question, so it is
+            // recorded at Information rather than left to the caller's summary.
+            _logger.LogInformation(
+                "Query failed after {ElapsedMs} ms against a {Timeout}s cap: {Sql}",
+                elapsed.ElapsedMilliseconds,
+                timeoutSeconds,
+                Redaction.Sql(sql));
+
+            throw;
+        }
     }
 
     private static string? GetString(OdbcDataReader reader, int ordinal) =>
