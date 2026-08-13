@@ -302,18 +302,65 @@ public sealed partial class InformixCatalogReader
         }
         catch (OdbcException ex)
         {
+            queries.Add(new ServerQuery(
+                "Lock waits", SessionQueries.LockWaits, onstat,
+                ServerQueryOutcome.Failed, Describe(ex)));
+
+            // A timeout means syslocks itself is too expensive to read on this instance, not
+            // that this particular query was wrong — so the fallback, which reads the same
+            // pseudo-table and joins it to itself, cannot possibly do better. Trying it anyway
+            // doubles the wait to reach the same answer: measured 2026-08-13, the pair cost
+            // over twenty seconds between them before reporting Unknown.
+            //
+            // Any other error is a shape problem — a missing waiter column, most likely — and
+            // there the fallback is exactly the right thing to try.
+            if (IsTimeout(ex))
+            {
+                _hasLockDetail = false;
+
+                _logger.LogInformation(
+                    "sysmaster:syslocks timed out, so lock waits cannot be reported on this "
+                    + "instance. The contention fallback reads the same pseudo-table and is "
+                    + "not attempted: {Message}",
+                    ex.Message);
+
+                queries.Add(new ServerQuery(
+                    "Lock contention (fallback)", SessionQueries.LockContention, onstat,
+                    ServerQueryOutcome.NotAttempted,
+                    "Not sent: syslocks timed out, and this reads the same pseudo-table."));
+
+                return ([], LockWaitFidelity.Unknown);
+            }
+
             _logger.LogInformation(
                 "sysmaster:syslocks.waiter did not answer, so IMS falls back to looking for "
                 + "sessions contending on the same resource: {Message}",
                 ex.Message);
 
-            queries.Add(new ServerQuery(
-                "Lock waits", SessionQueries.LockWaits, onstat,
-                ServerQueryOutcome.Failed, Describe(ex)));
-
             return await ReadLockContentionAsync(queries, cancellationToken).ConfigureAwait(false);
         }
     }
+
+    /// <summary>
+    /// Whether the server ran out of time rather than objecting to the statement.
+    /// </summary>
+    /// <remarks>
+    /// <c>HYT00</c> is ODBC's timeout state and <c>HY008</c> is the cancel the driver raises
+    /// alongside it. The two arrive together from this driver, so either is enough. Matched on
+    /// SQLSTATE rather than on message text, which is localised.
+    /// </remarks>
+    private static bool IsTimeout(OdbcException ex) =>
+        ex.Errors.Cast<OdbcError>().Any(e => IsTimeoutState(e.SQLState));
+
+    /// <summary>
+    /// Whether a SQLSTATE means "ran out of time" rather than "no".
+    /// </summary>
+    /// <remarks>
+    /// Split out from <see cref="IsTimeout"/> because <c>OdbcException</c> cannot be constructed
+    /// in a test — the decision is what matters, so the decision is what is testable.
+    /// </remarks>
+    internal static bool IsTimeoutState(string? sqlState) =>
+        sqlState is "HYT00" or "HYT01" or "HY008";
 
     /// <summary>
     /// The fallback: sessions holding locks on one resource, which is contention, not blocking.
@@ -397,7 +444,26 @@ public sealed partial class InformixCatalogReader
     // ---- One session's detail ---------------------------------------------------
 
     /// <inheritdoc />
-    public async Task<SessionDetail> GetSessionDetailAsync(int sid, CancellationToken cancellationToken)
+    /// <remarks>
+    /// <para>
+    /// Three keyed reads, and deliberately <em>not</em> a fourth for the lock waits. This used
+    /// to re-read every wait on the instance just to filter it to one session — work the
+    /// snapshot had already done — so clicking through five sessions ran the most expensive
+    /// query in the slice six times. Against 14.10 that was six ten-second timeouts, and
+    /// because the monitor shares its connection with the object tree, each one held the
+    /// semaphore and stalled tree expansion with it.
+    /// </para>
+    /// <para>
+    /// The caller passes in what the snapshot already knows instead. Slightly stale is the
+    /// right trade here: the edges are as old as the list the user is looking at, which is what
+    /// PR-5.5 means by manual refresh, and re-reading them per click bought no freshness worth
+    /// ten seconds of a shared connection (PR-6.4).
+    /// </para>
+    /// </remarks>
+    public async Task<SessionDetail> GetSessionDetailAsync(
+        int sid,
+        IReadOnlyList<LockWaitEdge> knownWaits,
+        CancellationToken cancellationToken)
     {
         ServerCallGuard.AssertNotOnUiThread("Read session detail");
 
@@ -412,16 +478,13 @@ public sealed partial class InformixCatalogReader
         SessionResources? resources = await ReadSessionResourcesAsync(sid, queries, cancellationToken)
             .ConfigureAwait(false);
 
-        (IReadOnlyList<LockWaitEdge> waits, _) = await ReadLockWaitsAsync(queries, cancellationToken)
-            .ConfigureAwait(false);
-
         return new SessionDetail
         {
             Sid = sid,
             CurrentSql = sql,
             CurrentSqlTruncated = truncated,
             LocksHeld = locks,
-            Waits = waits.Where(w => w.WaiterSid == sid || w.HolderSid == sid).ToArray(),
+            Waits = knownWaits.Where(w => w.WaiterSid == sid || w.HolderSid == sid).ToArray(),
             Resources = resources,
             Queries = queries,
         };

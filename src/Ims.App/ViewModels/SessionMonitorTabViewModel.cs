@@ -150,8 +150,32 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
         LockWaitFidelity.BlockerIdentified => "Nothing blocked",
         LockWaitFidelity.ContentionOnly =>
             "Sessions are contending on the same rows; IMS cannot tell which is waiting",
+
+        // Distinguish "too slow" from "not there", because they point at different remedies:
+        // a timeout says use onstat, an absence says this server has nothing to give. Saying
+        // "does not expose" for a timeout would be a small lie about the server (PR-8.2), and
+        // it would send someone looking for a permission that was never the problem.
+        _ when LockWaitsTimedOut =>
+            "Reading locks timed out on this instance — use onstat -g lok at the command line",
         _ => "This server does not expose lock waits to IMS",
     };
+
+    /// <summary>
+    /// True when the lock read failed for want of time rather than for want of the object.
+    /// </summary>
+    /// <remarks>
+    /// <c>syslocks</c> is synthesised from shared memory across every lock in the instance, so
+    /// on a busy server it can cost more than the monitor's whole budget to materialise —
+    /// measured against 14.10 on 2026-08-13, where even a single scan with no join exceeded ten
+    /// seconds. That is a fact about the instance, not a defect, and the UI says which.
+    /// </remarks>
+    public bool LockWaitsTimedOut =>
+        _snapshot?.Queries.Any(q =>
+            q.Outcome is ServerQueryOutcome.Failed
+            && q.Purpose.StartsWith("Lock", StringComparison.Ordinal)
+            && q.Message is { } m
+            && (m.Contains("HYT00", StringComparison.Ordinal)
+                || m.Contains("HY008", StringComparison.Ordinal))) ?? false;
 
     /// <summary>How many sessions are waiting on another (PR-5.3).</summary>
     public int BlockedCount => _snapshot?.Waits.Select(w => w.WaiterSid).Distinct().Count() ?? 0;
@@ -302,7 +326,15 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
         RaiseRefreshState();
     }
 
-    /// <summary>Reads the list and the indicators, once.</summary>
+    /// <summary>
+    /// Reads the list and the indicators, once.
+    /// </summary>
+    /// <remarks>
+    /// Sequential, and not worth "fixing" with a <c>WhenAll</c>. Both reads go down the one
+    /// connection behind the one semaphore this monitor shares with the object tree, so running
+    /// them together would queue them anyway and only make the wait harder to attribute. The
+    /// list goes first because it is what the user opened the tab to see.
+    /// </remarks>
     public async Task LoadAsync(CancellationToken cancellationToken)
     {
         await ReadAsync(cancellationToken).ConfigureAwait(true);
@@ -496,8 +528,13 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
 
         try
         {
+            // The snapshot's waits go in rather than being re-read. Without this, clicking
+            // through the list re-ran the lock-wait query once per session — ten seconds each
+            // against 14.10, every one of them holding the shared connection.
+            IReadOnlyList<LockWaitEdge> waits = _snapshot?.Waits ?? [];
+
             SessionDetail detail = await Task.Run(
-                () => _monitor.GetSessionDetailAsync(sid, _closing.Token), _closing.Token)
+                () => _monitor.GetSessionDetailAsync(sid, waits, _closing.Token), _closing.Token)
                 .ConfigureAwait(true);
 
             // The selection may have moved on while this was in flight. Showing one

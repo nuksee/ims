@@ -301,6 +301,21 @@ public class SessionTranslationTests
         InformixCatalogReader.ComputeCacheRatio(10, 50).Should().BeNull();
     }
 
+    [Theory]
+    [InlineData("HYT00", true)]
+    [InlineData("HY008", true)]
+    [InlineData("42S22", false)]
+    [InlineData("42000", false)]
+    public void Tells_a_timeout_apart_from_a_shape_problem(string sqlState, bool isTimeout)
+    {
+        // The two need different handling, and getting it wrong is expensive both ways. A
+        // timeout means syslocks is too costly to read on this instance, so the fallback —
+        // which reads the same pseudo-table — cannot do better and must not be attempted: the
+        // pair cost over twenty seconds against 14.10 on 2026-08-13 before reporting Unknown.
+        // A missing column is the opposite: that is exactly when the fallback is worth trying.
+        InformixCatalogReader.IsTimeoutState(sqlState).Should().Be(isTimeout);
+    }
+
     [Fact]
     public void An_unrecognised_server_mode_keeps_its_code()
     {

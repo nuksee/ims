@@ -85,9 +85,14 @@ public sealed class SerializedCatalogReader(ICatalogReader inner)
             : Task.FromResult(SessionSnapshot.Unavailable(NotAMonitor, DateTimeOffset.Now));
 
     /// <inheritdoc />
-    public Task<SessionDetail> GetSessionDetailAsync(int sid, CancellationToken cancellationToken) =>
+    public Task<SessionDetail> GetSessionDetailAsync(
+        int sid,
+        IReadOnlyList<LockWaitEdge> knownWaits,
+        CancellationToken cancellationToken) =>
         Monitor is { } monitor
-            ? RunAsync(() => monitor.GetSessionDetailAsync(sid, cancellationToken), cancellationToken)
+            ? RunAsync(
+                () => monitor.GetSessionDetailAsync(sid, knownWaits, cancellationToken),
+                cancellationToken)
             : Task.FromResult(new SessionDetail
             {
                 Sid = sid,

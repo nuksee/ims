@@ -37,8 +37,20 @@ public interface ISessionMonitor
     /// </remarks>
     Task<SessionSnapshot> GetSessionsAsync(CancellationToken cancellationToken);
 
-    /// <summary>Detail for one session (PR-5.2): locks, resources, current SQL.</summary>
-    Task<SessionDetail> GetSessionDetailAsync(int sid, CancellationToken cancellationToken);
+    /// <summary>
+    /// Detail for one session (PR-5.2): locks, resources, current SQL.
+    /// </summary>
+    /// <param name="knownWaits">
+    /// The waits the last snapshot found. Passed in rather than re-read: this used to fetch
+    /// every wait on the instance to filter it down to one session, which made clicking through
+    /// a list re-run the most expensive query in the slice once per session — and on a shared
+    /// connection each of those stalled the object tree behind it (PR-6.4). Slightly stale is
+    /// correct here: the edges are as old as the list the user is looking at.
+    /// </param>
+    Task<SessionDetail> GetSessionDetailAsync(
+        int sid,
+        IReadOnlyList<LockWaitEdge> knownWaits,
+        CancellationToken cancellationToken);
 
     /// <summary>Instance indicators (PR-5.6). None of them needs privileged access.</summary>
     Task<InstanceIndicators> GetInstanceIndicatorsAsync(CancellationToken cancellationToken);

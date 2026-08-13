@@ -349,9 +349,10 @@ comparison, and this stays `[~]` until the comparison is run.
 - [~] **M** Selected-session detail: locks held and awaited, resource consumption, temp space — PR-5.2.
   Locks built. **Current SQL is refused by this estate** and **the resource counters and
   per-session temp space are not met** — both measured 2026-08-13, see below
-- [~] **M** Blocked-session identification, with the blocker named — PR-5.3. Built on
-  `syslocks.waiter` after the self-join was measured to time out. **Whether `waiter` exists on
-  14.10 is the one thing left to confirm, and it decides whether this is met at all**
+- [ ] **M** Blocked-session identification, with the blocker named — PR-5.3. **Not met on this
+  estate.** Every read of `sysmaster:syslocks` times out at the 10s cap — the self-join *and* a
+  plain single scan, measured 2026-08-13. The resolver, fidelity grading and chain logic are built
+  and tested; what is missing is a source that answers in time. See below
 - [x] **M** Sort/filter the session list; highlight the user's own sessions — PR-5.4. Sort is the
   grid's own; the filter is the app's first `ICollectionView`, client-side. "YOU" is a word in a
   column, with the row tint strictly secondary (NFR-8)
@@ -401,24 +402,50 @@ never a crash — but three guesses were wrong and the code has been changed to 
 
 | What | Server said | What changed |
 |---|---|---|
-| **`syslocks` self-join** | `HYT00 Timeout expired`, repeatedly, at the 10s cap | **Replaced.** `syslocks` is a pseudo-table over shared memory with no indexes, so the join is quadratic in the lock count and nothing makes it cheaper. PR-5.3 now reads `syslocks.waiter` in a single scan; the join survives only as a hard-capped (50 rows) fallback that reports *contention*, never a named blocker |
+| **`syslocks` — any read of it** | `HYT00 Timeout expired`, at the 10s cap, for the self-join *and* for a plain single scan | See below. **This is the finding that matters** |
 | **`sysrstcb.dbnum`** | `42S22: Column (dbnum) not found` | **Removed from the select list.** It took the two memory columns with it — one absent name costs everything selected alongside it — so that query now asks for as little as it can |
 | **`syssqlcurses`** | `42000: No SELECT permission` | **Nothing to change.** The table exists and the column names may well be right; an ordinary account simply cannot read it. So PR-5.1's "current SQL" is a *privilege* limit on this estate, not a naming error, and no amount of query fixing will reach it. Granting `SELECT` on `syssqlcurses` would — that is a DBA decision, and PR-6.1 says IMS must not work around it |
 
-The timeout finding is the important one, and it generalises: **a query that only completes on an
-idle instance is no use on the busy one where a blocked session actually matters.** Ten seconds
-was already a deliberately short cap; the join could not meet it.
+#### `syslocks` cannot be read inside a monitor's budget on this estate — and that is PR-5.3
 
-Still unconfirmed: `syssessions.feprogram`, `.state` and `.connected`, and — now the load-bearing
-unknown — **whether `syslocks.waiter` exists on 14.10**. If it does not, PR-5.3 falls back to a
-query measured to time out, and the honest answer becomes `Unknown`. `--probe-sessions` checks it
-directly.
+The first diagnosis was wrong and is worth recording as such. The self-join timed out, so it was
+replaced with a single scan of `syslocks.waiter` on the theory that the join was quadratic over an
+unindexed pseudo-table. **The single scan then timed out too** (measured 16:44, and the fallback
+join behind it at 16:45). So the join was never the problem: **`syslocks` is expensive to
+materialise at all here.** It is synthesised from shared memory across every lock in the instance,
+and on a busy server that costs more than ten seconds regardless of what the predicate asks for.
 
-**PR-5.3 is the one to watch.** It now reads `syslocks.waiter` — the session the server has
-already queued behind a lock, so no lock-mode test is applied on that path: Informix decided the
-modes conflict before it made anyone wait. The self-join fallback is different, and its rows are
-only ever *contention*, because two sessions on one resource may both hold compatible locks and
-block nothing. The result is graded rather than asserted:
+Three consequences, all now in the code:
+
+1. **A timeout no longer costs double.** The fallback reads the same pseudo-table, so once
+   `syslocks` has timed out it cannot do better — trying it anyway spent 20+ seconds to reach the
+   same `Unknown`. `IsTimeoutState` tells a timeout (`HYT00`/`HY008`) apart from a shape problem
+   (`42S22`), and only the latter is worth a fallback. The skipped query still appears in the
+   PR-8.2 list, marked `NotAttempted` with the reason.
+2. **The UI distinguishes "too slow" from "not there."** They point at different remedies — a
+   timeout says reach for `onstat -g lok`, an absence says this server has nothing to give — and
+   calling a timeout "does not expose" would be a small lie about the server that sends someone
+   hunting a permission that was never the problem.
+3. **Raising the timeout is not the fix.** Ten seconds is already generous for a monitor
+   (NFR-1), and `Cancel()` does not reach this server, so a longer cap means a longer *unstoppable*
+   statement holding the connection the object tree shares (PR-6.4). The honest position is that
+   PR-5.3 is not reachable through `syslocks` on a busy instance, and `onstat -g lok` is.
+
+**So PR-5.3 is unmet on this estate, and the reason is performance rather than shape.** The
+resolver, the fidelity grading and the chain logic are all built and tested and would work the
+moment a readable source appears — a quieter instance, or a narrower lock view. What is not
+established is that one exists here.
+
+Still unconfirmed: `syssessions.feprogram`, `.state` and `.connected`, and whether
+`syslocks.waiter` exists at all — the timeout means even that much is unknown, since the statement
+never got far enough to complain about a column. `--probe-sessions` asks for it in isolation,
+which is the cheapest question that could settle it.
+
+**How PR-5.3 works when its source answers.** The primary read is `syslocks.waiter` — the session
+the server has already queued behind a lock, so no lock-mode test is applied on that path:
+Informix decided the modes conflict before it made anyone wait. The self-join fallback is
+different, and its rows are only ever *contention*, because two sessions on one resource may both
+hold compatible locks and block nothing. Either way the result is graded rather than asserted:
 
 | Fidelity | What the UI says |
 |---|---|
