@@ -338,6 +338,11 @@
                   VirtualizingPanel.VirtualizationMode="Recycling"
                   FontFamily="Consolas" FontSize="12"
                           AutomationProperties.Name="Session list">
+          <DataGrid.InputBindings>
+            <!-- The same request as the button, by the gesture people already try on a list
+                 row. Not the only route to it (NFR-8): the button is reachable by keyboard. -->
+            <MouseBinding MouseAction="LeftDoubleClick" Command="{Binding LoadDetailCommand}" />
+          </DataGrid.InputBindings>
           <DataGrid.RowStyle>
             <Style TargetType="DataGridRow">
               <!--
@@ -439,10 +444,28 @@
                                     Converter={StaticResource BoolToVisibility}}"
                        AutomationProperties.Name="Time taken to read the detail" />
 
-            <TextBlock Text="Select a session to see its locks and what it is running."
+            <TextBlock Text="Select a session, then load its detail."
                        Foreground="#FF5F6368" Margin="0,6,0,0"
                        Visibility="{Binding ShowSelectSessionPrompt,
                                     Converter={StaticResource BoolToVisibility}}" />
+
+            <!--
+              Detail is read on request, not on selection. Selecting a row used to issue three
+              queries, so arrowing down the list issued three per keypress — the opposite of
+              PR-5.5's "only on explicit action", which the list above already honoured while
+              this pane quietly did not. A keypress is navigation; this button is a request.
+            -->
+            <StackPanel Margin="0,6,0,0"
+                        Visibility="{Binding ShowLoadDetailPrompt,
+                                     Converter={StaticResource BoolToVisibility}}">
+              <Button Command="{Binding LoadDetailCommand}"
+                      Content="{Binding LoadDetailLabel}"
+                      Padding="8,3" HorizontalAlignment="Left"
+                      AutomationProperties.Name="Load detail for the selected session" />
+              <TextBlock Foreground="#FF5F6368" TextWrapping="Wrap" Margin="0,4,0,0"
+                         Text="Locks, the current statement and resource use are read only when
+                               you ask, so moving through the list costs nothing." />
+            </StackPanel>
 
             <StackPanel Visibility="{Binding Detail, Converter={StaticResource NotNullToVisibility}}">
 

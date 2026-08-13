@@ -331,14 +331,21 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
     /// True when the detail pane should ask the user to pick a session.
     /// </summary>
     /// <remarks>
-    /// All three conditions matter, which is why this is one property rather than a stack of
-    /// converters in the XAML. <see cref="Detail"/> is null both before a session is chosen and
-    /// while one is being read, so binding the prompt to it alone showed "Select a session" for
-    /// the whole of a read — and on this estate a detail read can spend ten seconds reaching a
-    /// <c>syslocks</c> timeout.
+    /// Only when nothing is selected. Once a row is chosen the pane shows the load button
+    /// instead, because detail is no longer fetched by selecting — and a prompt saying "select a
+    /// session" above a session that is plainly selected reads as a bug.
     /// </remarks>
-    public bool ShowSelectSessionPrompt =>
-        SelectedSession is null && Detail is null && !IsReadingDetail;
+    public bool ShowSelectSessionPrompt => SelectedSession is null;
+
+    /// <summary>
+    /// True when a session is selected but its detail has not been read.
+    /// </summary>
+    /// <remarks>
+    /// The resting state now, rather than a transient one: selecting a row deliberately queries
+    /// nothing, so this is what the pane shows until the user asks.
+    /// </remarks>
+    public bool ShowLoadDetailPrompt =>
+        SelectedSession is not null && Detail is null && !IsReadingDetail;
 
     // ---- Refresh ----------------------------------------------------------------
 
@@ -651,36 +658,69 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
     partial void OnDetailChanged(SessionDetail? value) =>
         OnPropertyChanged(nameof(ShowSelectSessionPrompt));
 
-    partial void OnIsReadingDetailChanged(bool value) =>
+    partial void OnIsReadingDetailChanged(bool value)
+    {
         OnPropertyChanged(nameof(ShowSelectSessionPrompt));
+        OnPropertyChanged(nameof(CanLoadDetail));
+    }
 
     partial void OnDetailReadLabelChanged(string? value) =>
         OnPropertyChanged(nameof(HasDetailReadLabel));
 
     /// <summary>
-    /// Reads the selected session's detail (PR-5.2).
+    /// Clears the detail when the selection moves. Reads nothing.
     /// </summary>
     /// <remarks>
-    /// On selection rather than on refresh, and for one session rather than all of them.
-    /// PR-6.4 wants these queries negligible, and the statement text is the largest thing
-    /// this slice fetches.
+    /// <para>
+    /// Selecting a session used to read its detail immediately, which made moving down the list
+    /// with the arrow keys issue three queries per row. That is the opposite of what PR-5.5 asks
+    /// for — refresh "only on explicit action" — and the list itself already worked that way while
+    /// the detail pane quietly did not.
+    /// </para>
+    /// <para>
+    /// It is worse than untidy on a server like this one, where all three of those queries fail:
+    /// the reads cost a round trip each to return nothing, and a keypress is not an explicit
+    /// request for three server queries. <see cref="LoadDetailCommand"/> is.
+    /// </para>
     /// </remarks>
     partial void OnSelectedSessionChanged(SessionRowViewModel? value)
     {
         Detail = null;
         DetailReadLabel = null;
+        IsReadingDetail = false;
+
         OnPropertyChanged(nameof(DetailQueries));
         OnPropertyChanged(nameof(QueryText));
         OnPropertyChanged(nameof(ShowSelectSessionPrompt));
+        OnPropertyChanged(nameof(CanLoadDetail));
+        OnPropertyChanged(nameof(LoadDetailLabel));
+    }
 
-        if (value is null)
+    /// <summary>
+    /// Reads the selected session's detail, because the user asked (PR-5.2, PR-5.5).
+    /// </summary>
+    /// <remarks>
+    /// The documented action PR-6.2 requires before IMS sends a statement nobody typed. Selecting
+    /// a row is navigation; pressing this is a request.
+    /// </remarks>
+    [RelayCommand]
+    public async Task LoadDetailAsync()
+    {
+        if (SelectedSession is not { } row || IsReadingDetail)
         {
-            IsReadingDetail = false;
             return;
         }
 
-        _ = ReadDetailAsync(value.Sid);
+        await ReadDetailAsync(row.Sid).ConfigureAwait(true);
     }
+
+    /// <summary>True when there is a session selected to load detail for.</summary>
+    public bool CanLoadDetail => SelectedSession is not null && !IsReadingDetail;
+
+    /// <summary>Names the session on the button, so it is clear what will be queried.</summary>
+    public string LoadDetailLabel => SelectedSession is { } row
+        ? $"Load detail for session {row.Sid}"
+        : "Load detail";
 
     private async Task ReadDetailAsync(int sid)
     {
@@ -717,12 +757,16 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
         }
         finally
         {
-            // Only if this read is still the one being waited for. Arrowing down the list
-            // starts a read per row, and a slow earlier one finishing last would otherwise
-            // clear the indicator while the current row is still loading.
+            // Always cleared, unlike when this ran on selection: only one read can be in flight
+            // now, because the command will not start a second, so there is no later read whose
+            // indicator this could wrongly clear. Leaving it set when the selection has moved on
+            // would strand the pane in a reading state nothing was going to leave.
+            IsReadingDetail = false;
+
+            // The timing belongs to the session it measured. If the user has moved on, it would
+            // read as this row's cost, which it is not.
             if (SelectedSession?.Sid == sid)
             {
-                IsReadingDetail = false;
                 DetailReadLabel = Describe(elapsed.Elapsed);
             }
         }

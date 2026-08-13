@@ -347,8 +347,10 @@ comparison, and this stays `[~]` until the comparison is run.
   Built on `sysmaster:syssessions`, the one object here with a measured success against 14.10.
   Current SQL moved to the detail pane rather than the list — see the note below
 - [~] **M** Selected-session detail: locks held and awaited, resource consumption, temp space — PR-5.2.
-  Locks built. **Current SQL is refused by this estate** and **the resource counters and
-  per-session temp space are not met** — both measured 2026-08-13, see below
+  Locks built, **read on request rather than on selection** — selecting a row issued three queries,
+  so arrowing down the list issued three per keypress, which is the opposite of what PR-5.5 asks
+  for. **Current SQL is refused by this estate** and **the resource counters and per-session temp
+  space are not met** — both measured 2026-08-13, see below
 - [ ] **M** Blocked-session identification, with the blocker named — PR-5.3. **Not met on this
   estate.** Every read of `sysmaster:syslocks` times out at the 10s cap — the self-join *and* a
   plain single scan, measured 2026-08-13. The resolver, fidelity grading and chain logic are built
