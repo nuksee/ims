@@ -204,4 +204,48 @@ public static class InformixConcepts
     public const string Serial =
         "SERIAL is Informix's auto-incrementing integer, equivalent to SQL Server's IDENTITY or "
         + "PostgreSQL's serial. SERIAL8 and BIGSERIAL are the 64-bit forms.";
+
+    // ---- The session monitor's vocabulary (Slice 3, NFR-11) ---------------------
+
+    public const string Session =
+        "A session is one client's connection to the instance, identified by a session id — the "
+        + "'sid' that onstat -g ses lists. One application can hold several, and a session "
+        + "outlives any single statement it runs.";
+
+    public const string SessionVersusProcess =
+        "The session id is Informix's own number for a connection; the process id belongs to the "
+        + "client program on its own machine. They are unrelated, and onmode -z takes the session "
+        + "id, not the process id — confusing the two is how the wrong thing gets stopped.";
+
+    public const string Lock =
+        "A lock reserves a row, page or table so two sessions cannot change it at once. A session "
+        + "that wants a lock somebody else holds in an incompatible mode waits for it — which is "
+        + "what 'blocked' means here. Two shared read locks are compatible and do not block.";
+
+    public const string Latch =
+        "A latch protects a structure inside the server's shared memory for the moment it takes to "
+        + "read or change it, so it is held for microseconds rather than for a transaction. A "
+        + "session waiting on one is not blocked by another user's work in the way a lock wait is.";
+
+    public const string Checkpoint =
+        "At a checkpoint Informix flushes modified pages from shared memory to disk, giving "
+        + "recovery a known-good starting point. A long gap since the last one means more work to "
+        + "redo after a failure; checkpoints that are very frequent usually mean the logical log "
+        + "is too small.";
+
+    public const string BufferEfficiency =
+        "The read cache percentage is how often a page was already in shared memory rather than "
+        + "having to be fetched from disk. High is good, and on a busy OLTP instance anything "
+        + "below about 95% is usually worth investigating. On a freshly started server there has "
+        + "been too little work to compute it, which is why it can read Unknown.";
+
+    public const string Uptime =
+        "How long the instance has been running since it was last brought online. Computed by IMS "
+        + "from the server's recorded boot time.";
+
+    public const string TempSpace =
+        "Temporary dbspaces hold sort work, temporary tables and index builds. IMS reports them "
+        + "for the instance rather than per session: attributing temporary space to one session "
+        + "needs partition detail IMS does not read, and a number it cannot justify is worse than "
+        + "an admitted gap.";
 }

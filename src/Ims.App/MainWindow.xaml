@@ -29,6 +29,7 @@
     <local:EnvironmentBrushConverter x:Key="EnvironmentBrush" />
     <local:TransactionStateConverter x:Key="TransactionText" />
     <local:StatementOutcomeConverter x:Key="OutcomeText" />
+    <local:UnknownIfNullConverter x:Key="UnknownIfNull" />
 
     <!--
       Object detail (PR-2.4), shown in the tab strip beside the editors rather than
@@ -173,6 +174,294 @@
                    TextWrapping="Wrap" VerticalAlignment="Top" />
       </Grid>
     </DataTemplate>
+
+    <!--
+      The session monitor (PR-5.1 to PR-5.7), a tab of its own beside the editors.
+
+      Three bands: the instance's own indicators across the top (PR-5.6), the session
+      list, and the selected session's detail beneath it. The list has a fixed set of
+      columns and a bounded row count, so it is a static DataGrid like the object
+      detail's — not the dynamic column building the results grid does, which exists
+      for a cursor whose shape is unknown until it runs.
+
+      Nothing here signals state by colour alone (NFR-8). "YOU" is a word, a blocked
+      session names its blocker in text, and the fidelity of the blocking picture is a
+      sentence rather than an icon.
+    -->
+    <DataTemplate x:Key="SessionMonitorTemplate" DataType="{x:Type vm:SessionMonitorTabViewModel}">
+      <Grid Margin="10">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="Auto" />
+          <RowDefinition Height="*" MinHeight="120" />
+          <RowDefinition Height="4" />
+          <RowDefinition Height="Auto" MaxHeight="300" />
+        </Grid.RowDefinitions>
+
+        <!--
+          PR-5.6. Every figure may be absent, because each comes from its own query and
+          any one of them can fail on a server shaped differently — so each reads
+          "Unknown" rather than blank, which would be indistinguishable from zero.
+        -->
+        <Border Grid.Row="0" Background="#FFF6F7F9" BorderBrush="#FFE0E0E0"
+                BorderThickness="1" Padding="8,6" Margin="0,0,0,8"
+                Visibility="{Binding Indicators, Converter={StaticResource NotNullToVisibility}}">
+          <WrapPanel AutomationProperties.Name="Instance indicators">
+            <TextBlock Text="Mode" FontWeight="SemiBold" Margin="0,0,4,0" />
+            <TextBlock Text="{Binding Indicators.Mode, Converter={StaticResource UnknownIfNull}}"
+                       Margin="0,0,16,0" />
+
+            <TextBlock Text="Up" FontWeight="SemiBold" Margin="0,0,4,0"
+                       ToolTip="{x:Static vm:InformixConcepts.Uptime}" />
+            <TextBlock Text="{Binding Indicators.Uptime, Converter={StaticResource UnknownIfNull}}"
+                       Margin="0,0,16,0" />
+
+            <TextBlock Text="Sessions" FontWeight="SemiBold" Margin="0,0,4,0"
+                       ToolTip="{x:Static vm:InformixConcepts.Session}" />
+            <TextBlock Text="{Binding Indicators.SessionCount, Converter={StaticResource UnknownIfNull}}"
+                       Margin="0,0,16,0" />
+
+            <TextBlock Text="Read cache" FontWeight="SemiBold" Margin="0,0,4,0"
+                       ToolTip="{x:Static vm:InformixConcepts.BufferEfficiency}" />
+            <TextBlock Margin="0,0,16,0"
+                       Text="{Binding Indicators.ReadCachePercent,
+                              Converter={StaticResource UnknownIfNull}, ConverterParameter='{}{0:N2}%'}" />
+
+            <TextBlock Text="Write cache" FontWeight="SemiBold" Margin="0,0,4,0"
+                       ToolTip="{x:Static vm:InformixConcepts.BufferEfficiency}" />
+            <TextBlock Margin="0,0,16,0"
+                       Text="{Binding Indicators.WriteCachePercent,
+                              Converter={StaticResource UnknownIfNull}, ConverterParameter='{}{0:N2}%'}" />
+
+            <TextBlock Text="Last checkpoint" FontWeight="SemiBold" Margin="0,0,4,0"
+                       ToolTip="{x:Static vm:InformixConcepts.Checkpoint}" />
+            <TextBlock Margin="0,0,16,0"
+                       Text="{Binding Indicators.LastCheckpoint,
+                              Converter={StaticResource UnknownIfNull}, ConverterParameter='{}{0:HH:mm:ss}'}" />
+          </WrapPanel>
+        </Border>
+
+        <!-- Refresh control (PR-5.5) and the filter (PR-5.4). -->
+        <DockPanel Grid.Row="1" Margin="0,0,0,6">
+          <Button DockPanel.Dock="Left" Command="{Binding RefreshCommand}"
+                  Padding="6,2" Margin="0,0,6,0"
+                  ToolTip="Read the session list now"
+                  AutomationProperties.Name="Refresh the session list">
+            <StackPanel Orientation="Horizontal">
+              <ic:SymbolIcon Symbol="ArrowClockwise" FontSize="13" />
+              <AccessText Text="_Refresh" Margin="4,0,0,0" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+
+          <!--
+            Manual is the default and it is a real choice, not an off switch: PR-5.5
+            makes it the default precisely so IMS asks the server nothing until told to.
+          -->
+          <TextBlock DockPanel.Dock="Left" Text="Refresh" VerticalAlignment="Center"
+                     Margin="6,0,4,0" />
+          <ComboBox DockPanel.Dock="Left" Width="110" Margin="0,0,12,0"
+                    SelectedIndex="0"
+                    SelectionChanged="OnRefreshIntervalChanged"
+                    AutomationProperties.Name="Refresh interval">
+            <ComboBoxItem Content="Manually" Tag="0" />
+            <ComboBoxItem Content="Every 5s" Tag="5" />
+            <ComboBoxItem Content="Every 10s" Tag="10" />
+            <ComboBoxItem Content="Every 30s" Tag="30" />
+            <ComboBoxItem Content="Every minute" Tag="60" />
+            <ComboBoxItem Content="Every 5 minutes" Tag="300" />
+          </ComboBox>
+
+          <CheckBox DockPanel.Dock="Right" Content="Hide system sessions"
+                    IsChecked="{Binding HideSystemSessions}"
+                    VerticalAlignment="Center" Margin="8,0,0,0"
+                    AutomationProperties.Name="Hide system sessions" />
+
+          <TextBox Text="{Binding Filter, UpdateSourceTrigger=PropertyChanged, Delay=400}"
+                   MinWidth="160" Margin="0,0,8,0" Padding="3,2"
+                   ToolTip="Filter by user, host, application, state or session id"
+                   AutomationProperties.Name="Filter sessions" />
+        </DockPanel>
+
+        <!-- When the list was read, and what IMS could establish about blocking. -->
+        <DockPanel Grid.Row="2" Margin="0,0,0,6">
+          <TextBlock DockPanel.Dock="Right" Text="{Binding ReadAtLabel}"
+                     Foreground="#FF5F6368"
+                     AutomationProperties.Name="When the list was read" />
+          <TextBlock Text="{Binding FidelityLabel}" TextWrapping="Wrap"
+                     Foreground="#FF3C4043"
+                     ToolTip="{x:Static vm:InformixConcepts.Lock}"
+                     AutomationProperties.Name="Blocking summary" />
+        </DockPanel>
+
+        <!--
+          The session list (PR-5.1). Sorting is the DataGrid's own, over the fetched
+          rows — a session list is small, so unlike the object tree there is nothing to
+          gain by pushing it back to the server, and re-querying sysmaster per keystroke
+          is exactly the load PR-6.4 rules out.
+        -->
+        <DataGrid Grid.Row="3" ItemsSource="{Binding Sessions}"
+                  SelectedItem="{Binding SelectedSession}"
+                  AutoGenerateColumns="False" IsReadOnly="True"
+                  HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                  CanUserSortColumns="True"
+                  SelectionMode="Single" SelectionUnit="FullRow"
+                  ClipboardCopyMode="IncludeHeader"
+                  EnableRowVirtualization="True" EnableColumnVirtualization="True"
+                  VirtualizingPanel.VirtualizationMode="Recycling"
+                  FontFamily="Consolas" FontSize="12"
+                  AutomationProperties.Name="Session list">
+          <DataGrid.RowStyle>
+            <Style TargetType="DataGridRow">
+              <!--
+                The tint is decoration. The "You" column carries the meaning, so this
+                still reads correctly in monochrome or to a screen reader (NFR-8).
+              -->
+              <Style.Triggers>
+                <DataTrigger Binding="{Binding IsMine}" Value="True">
+                  <Setter Property="Background" Value="#FFEEF6FF" />
+                </DataTrigger>
+                <DataTrigger Binding="{Binding IsBlocked}" Value="True">
+                  <Setter Property="FontWeight" Value="SemiBold" />
+                </DataTrigger>
+              </Style.Triggers>
+            </Style>
+          </DataGrid.RowStyle>
+          <DataGrid.Columns>
+            <DataGridTextColumn Header="You" Binding="{Binding MineLabel}" Width="40"
+                                SortMemberPath="IsMine" />
+            <DataGridTextColumn Header="Session" Binding="{Binding Sid}" Width="70" />
+            <DataGridTextColumn Header="User" Binding="{Binding UserName}" Width="120" />
+            <DataGridTextColumn Header="Host" Binding="{Binding HostName}" Width="140" />
+            <DataGridTextColumn Header="Application" Binding="{Binding Application}" Width="140" />
+            <DataGridTextColumn Header="State" Binding="{Binding State}" Width="160" />
+            <!-- PR-5.3: the blocker, named, in the row that is waiting. -->
+            <DataGridTextColumn Header="Blocked by" Binding="{Binding BlockedByLabel}" Width="90"
+                                SortMemberPath="IsBlocked" />
+            <DataGridTextColumn Header="Connected" Width="140"
+                                Binding="{Binding ConnectedAt, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}" />
+          </DataGrid.Columns>
+        </DataGrid>
+
+        <GridSplitter Grid.Row="4" Height="4" HorizontalAlignment="Stretch"
+                      Background="#FFE0E0E0" />
+
+        <!-- The selected session's detail (PR-5.2), and the queries behind it (PR-8.2). -->
+        <ScrollViewer Grid.Row="5" VerticalScrollBarVisibility="Auto">
+          <StackPanel>
+            <TextBlock Text="{Binding Notice}" Foreground="#FFB3261E"
+                       TextWrapping="Wrap" Margin="0,4,0,4"
+                       Visibility="{Binding Notice, Converter={StaticResource NotNullToVisibility}}"
+                       AutomationProperties.Name="Notice" />
+
+            <TextBlock Text="Select a session to see its locks and what it is running."
+                       Foreground="#FF5F6368" Margin="0,6,0,0"
+                       Visibility="{Binding Detail, Converter={StaticResource NullToVisibility}}" />
+
+            <StackPanel Visibility="{Binding Detail, Converter={StaticResource NotNullToVisibility}}">
+
+              <!-- PR-5.7: only drawn where more than two sessions are involved. -->
+              <Border Background="#FFFFF4CE" BorderBrush="#FFE0C060" BorderThickness="1"
+                      Padding="8,5" Margin="0,4,0,8"
+                      Visibility="{Binding HasChains, Converter={StaticResource BoolToVisibility}}">
+                <StackPanel>
+                  <TextBlock Text="⚠ Lock wait chain" FontWeight="SemiBold" />
+                  <TextBlock Text="{Binding ChainsLabel}" FontFamily="Consolas"
+                             TextWrapping="Wrap" Margin="0,3,0,0"
+                             AutomationProperties.Name="Lock wait chain" />
+                  <TextBlock Text="Read right to left: each session is waiting on the one after it."
+                             Foreground="#FF5F6368" TextWrapping="Wrap" Margin="0,3,0,0" />
+                </StackPanel>
+              </Border>
+
+              <Expander Header="What this session is running" IsExpanded="True" Margin="0,0,0,8">
+                <StackPanel>
+                  <TextBlock Text="{Binding Detail.CurrentSql}" FontFamily="Consolas" FontSize="12"
+                             TextWrapping="Wrap" Margin="4"
+                             AutomationProperties.Name="Current statement" />
+                  <TextBlock Text="Only the first 2000 characters are shown."
+                             Foreground="#FF5F6368" Margin="4,0,0,0"
+                             Visibility="{Binding Detail.CurrentSqlTruncated,
+                                          Converter={StaticResource BoolToVisibility}}" />
+                </StackPanel>
+              </Expander>
+
+              <Expander Header="Locks held" IsExpanded="True" Margin="0,0,0,8">
+                <DataGrid ItemsSource="{Binding Detail.LocksHeld}"
+                          AutoGenerateColumns="False" IsReadOnly="True"
+                          HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                          ClipboardCopyMode="IncludeHeader"
+                          MaxHeight="180" FontFamily="Consolas" FontSize="12"
+                          AutomationProperties.Name="Locks held">
+                  <DataGrid.Columns>
+                    <DataGridTextColumn Header="Object" Binding="{Binding Resource}" Width="220" />
+                    <DataGridTextColumn Header="Mode" Binding="{Binding LockType}" Width="140" />
+                    <!-- PR-8.2: the server's own code, on show. -->
+                    <DataGridTextColumn Header="type" Binding="{Binding RawLockType}" Width="55" />
+                    <DataGridTextColumn Header="Row" Binding="{Binding RowId}" Width="90" />
+                    <DataGridTextColumn Header="Index" Binding="{Binding KeyNumber}" Width="55" />
+                  </DataGrid.Columns>
+                </DataGrid>
+              </Expander>
+
+              <Expander Header="Resource use" Margin="0,0,0,8">
+                <StackPanel Margin="4"
+                            Visibility="{Binding Detail.Resources,
+                                         Converter={StaticResource NotNullToVisibility}}">
+                  <TextBlock Text="{Binding Detail.Resources.MemoryUsedBytes,
+                                    StringFormat='Memory in use: {0:N0} bytes'}" />
+                  <TextBlock Text="{Binding Detail.Resources.MemoryTotalBytes,
+                                    StringFormat='Memory allocated: {0:N0} bytes'}" />
+                </StackPanel>
+              </Expander>
+
+              <!--
+                NFR-11. U2 will not know what a latch is, and the session monitor is
+                where Informix's vocabulary arrives all at once.
+              -->
+              <Expander Header="What these Informix terms mean" Margin="0,0,0,8">
+                <StackPanel Margin="6">
+                  <TextBlock Text="Session" FontWeight="SemiBold" Margin="0,4,0,0" />
+                  <TextBlock Text="{x:Static vm:InformixConcepts.Session}" TextWrapping="Wrap" />
+                  <TextBlock Text="Lock" FontWeight="SemiBold" Margin="0,8,0,0" />
+                  <TextBlock Text="{x:Static vm:InformixConcepts.Lock}" TextWrapping="Wrap" />
+                  <TextBlock Text="Latch" FontWeight="SemiBold" Margin="0,8,0,0" />
+                  <TextBlock Text="{x:Static vm:InformixConcepts.Latch}" TextWrapping="Wrap" />
+                  <TextBlock Text="Checkpoint" FontWeight="SemiBold" Margin="0,8,0,0" />
+                  <TextBlock Text="{x:Static vm:InformixConcepts.Checkpoint}" TextWrapping="Wrap" />
+                  <TextBlock Text="Buffer efficiency" FontWeight="SemiBold" Margin="0,8,0,0" />
+                  <TextBlock Text="{x:Static vm:InformixConcepts.BufferEfficiency}" TextWrapping="Wrap" />
+                  <TextBlock Text="Session id and process id" FontWeight="SemiBold" Margin="0,8,0,0" />
+                  <TextBlock Text="{x:Static vm:InformixConcepts.SessionVersusProcess}" TextWrapping="Wrap" />
+                </StackPanel>
+              </Expander>
+            </StackPanel>
+
+            <!--
+              PR-8.2 and PR-8.3 together: the queries IMS sent, and beside each the
+              onstat command that answers the same question. Formatted as SQL comments
+              so the whole block can be taken to an editor tab and run.
+            -->
+            <Expander Header="Queries behind this pane, and their onstat equivalents"
+                      Margin="0,0,0,8">
+              <DockPanel>
+                <Button DockPanel.Dock="Top" HorizontalAlignment="Left"
+                        Content="Open in a new editor tab" Padding="6,2" Margin="0,0,0,4"
+                        Click="OnOpenSessionQueries"
+                        AutomationProperties.Name="Open the session queries in an editor tab" />
+                <TextBox Text="{Binding QueryText, Mode=OneWay}"
+                         IsReadOnly="True" AcceptsReturn="True"
+                         FontFamily="Consolas" FontSize="11"
+                         MaxHeight="240"
+                         VerticalScrollBarVisibility="Auto"
+                         HorizontalScrollBarVisibility="Auto"
+                         AutomationProperties.Name="Queries behind this pane" />
+              </DockPanel>
+            </Expander>
+          </StackPanel>
+        </ScrollViewer>
+      </Grid>
+    </DataTemplate>
   </Window.Resources>
 
   <!--
@@ -226,6 +515,13 @@
         <MenuItem Header="_New connection…" Click="OnNewConnection" />
         <MenuItem Header="_Edit selected…" Click="OnEditConnection" />
         <MenuItem Header="_Remove selected" Click="OnRemoveConnection" />
+      </MenuItem>
+      <!--
+        Instance-scoped like Connection, so it sits beside it rather than under
+        Results, which is where a statement's own output lives.
+      -->
+      <MenuItem Header="_Sessions">
+        <MenuItem Header="_Session monitor" Command="{x:Static local:MainWindow.SessionMonitorCommand}" />
       </MenuItem>
       <MenuItem Header="_Results">
         <MenuItem Header="Export to _CSV…" Click="OnExportCsv" />
@@ -622,6 +918,15 @@
               <ic:SymbolIcon Symbol="PlugDisconnected" />
             </Button>
 
+            <!-- Instance-scoped, so it belongs with Connect rather than with the query
+                 actions after the divider (PR-5.1). -->
+            <Button DockPanel.Dock="Left"
+                    Command="{x:Static local:MainWindow.SessionMonitorCommand}"
+                    ToolTip="Session monitor — who is connected and what is blocked (Ctrl+Alt+S)"
+                    AutomationProperties.Name="Session monitor">
+              <ic:SymbolIcon Symbol="Pulse" />
+            </Button>
+
             <Border DockPanel.Dock="Left" Style="{StaticResource ToolbarDivider}" />
 
             <Button DockPanel.Dock="Left"
@@ -870,11 +1175,11 @@
         </TabControl>
 
         <!--
-          This row is whichever document the selected tab is: the shared editor, or an
-          object's detail. They are siblings toggled from code-behind rather than a
-          ContentTemplate on the strip above, because that strip deliberately renders
-          no content — see the comments on TabHeaders. One AvalonEdit serves every
-          editor tab and it has to stay outside.
+          This row is whichever document the selected tab is: the shared editor, an
+          object's detail, or the session monitor. They are siblings toggled from
+          code-behind rather than a ContentTemplate on the strip above, because that
+          strip deliberately renders no content — see the comments on TabHeaders. One
+          AvalonEdit serves every editor tab and it has to stay outside.
         -->
         <Grid Grid.Row="2">
           <DockPanel x:Name="EditorHost">
@@ -922,6 +1227,12 @@
                           Visibility="Collapsed"
                           ContentTemplate="{StaticResource ObjectDetailTemplate}"
                           AutomationProperties.Name="Object detail" />
+
+          <!-- Content is the selected SessionMonitorTabViewModel itself (PR-5.1). -->
+          <ContentControl x:Name="SessionMonitorHost"
+                          Visibility="Collapsed"
+                          ContentTemplate="{StaticResource SessionMonitorTemplate}"
+                          AutomationProperties.Name="Session monitor" />
         </Grid>
 
         <GridSplitter x:Name="ResultsSplitter"

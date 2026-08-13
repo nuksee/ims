@@ -4,6 +4,7 @@ using System.Text;
 using Ims.Core.Catalog;
 using Ims.Core.Data;
 using Ims.Core.Diagnostics;
+using Ims.Core.Monitoring;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -29,8 +30,14 @@ namespace Ims.Data.Informix.Catalog;
 /// nothing else — that is NFR-4's "degrade gracefully with a clear explanation
 /// rather than failing opaquely", applied at the smallest useful granularity.
 /// </para>
+/// <para>
+/// It also reads live session state (<see cref="ISessionMonitor"/>), which is not schema
+/// and lives in <c>InformixCatalogReader.Sessions.cs</c> — same type, same connection, and
+/// therefore the same one cursor. See that file for why the two capabilities share an
+/// object rather than each having their own.
+/// </para>
 /// </remarks>
-public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
+public sealed partial class InformixCatalogReader : ICatalogReader, ISessionMonitor, IAsyncDisposable
 {
     private readonly string _connectionString;
     private readonly ILogger _logger;
@@ -897,9 +904,25 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
 
     // ---- Plumbing ---------------------------------------------------------------
 
+    /// <summary>The timeout every catalogue query carries, in seconds.</summary>
+    private const int CatalogTimeoutSeconds = 60;
+
+    private Task<IReadOnlyList<T>> QueryAsync<T>(
+        string sql,
+        Func<OdbcDataReader, T> map,
+        CancellationToken cancellationToken,
+        params object?[] parameters) =>
+        QueryAsync(sql, map, CatalogTimeoutSeconds, cancellationToken, parameters);
+
+    /// <param name="timeoutSeconds">
+    /// How long to wait. The session monitor asks for less than the catalogue does:
+    /// because <c>OdbcCommand.Cancel</c> does not reach this server, the timeout is what
+    /// actually ends a statement, so it is the bound that matters.
+    /// </param>
     private async Task<IReadOnlyList<T>> QueryAsync<T>(
         string sql,
         Func<OdbcDataReader, T> map,
+        int timeoutSeconds,
         CancellationToken cancellationToken,
         params object?[] parameters)
     {
@@ -908,7 +931,7 @@ public sealed class InformixCatalogReader : ICatalogReader, IAsyncDisposable
         OdbcConnection connection = _connection
             ?? throw new InvalidOperationException("The catalogue reader is not open.");
 
-        using var command = new OdbcCommand(sql, connection) { CommandTimeout = 60 };
+        using var command = new OdbcCommand(sql, connection) { CommandTimeout = timeoutSeconds };
 
         foreach (object? parameter in parameters)
         {

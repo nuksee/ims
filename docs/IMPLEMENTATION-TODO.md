@@ -343,16 +343,119 @@ comparison, and this stays `[~]` until the comparison is run.
 > re-prioritisation against §8 is needed.
 
 - [x] **Q-1 answered:** ordinary developers can read `sysmaster` — Q-1, AS-3, DEP-4
-- [ ] **M** Session list: id, user, originating host, application, connection time, state, current/recent SQL — PR-5.1
-- [ ] **M** Selected-session detail: locks held and awaited, resource consumption, temp space — PR-5.2
-- [ ] **M** Blocked-session identification, with the blocker named — PR-5.3
-- [ ] **M** Sort/filter the session list; highlight the user's own sessions — PR-5.4
-- [ ] **M** Manual refresh by default; optional user-chosen interval; **no query at all while the view is closed** — PR-5.5, PR-6.4
-- [ ] **M** Name the equivalent `onstat` command on every view (`-g ses`, `-g sql`, `-g lok`) and expose the raw output — PR-8.2, PR-8.3
-- [ ] **S** Instance indicators needing no privileged access: version, mode, uptime, session count, buffer efficiency, checkpoint recency — PR-5.6
-- [ ] **S** Lock-wait dependency chain for >2 sessions — PR-5.7
-- [ ] ~~Terminate a session~~ — **excluded**, PR-5.8 / DEC-2. Do not build. It pulls in a confirmation framework and an audit store (DEC-8)
-- [ ] Exit check: two sessions, one blocking the other, identified from the UI alone — §5
+- [x] **M** Session list: id, user, originating host, application, connection time, state — PR-5.1.
+  Built on `sysmaster:syssessions`, the one object here with a measured success against 14.10.
+  Current SQL moved to the detail pane rather than the list — see the note below
+- [~] **M** Selected-session detail: locks held and awaited, resource consumption, temp space — PR-5.2.
+  Locks built. **Current SQL is refused by this estate** and **the resource counters and
+  per-session temp space are not met** — both measured 2026-08-13, see below
+- [~] **M** Blocked-session identification, with the blocker named — PR-5.3. Built on
+  `syslocks.waiter` after the self-join was measured to time out. **Whether `waiter` exists on
+  14.10 is the one thing left to confirm, and it decides whether this is met at all**
+- [x] **M** Sort/filter the session list; highlight the user's own sessions — PR-5.4. Sort is the
+  grid's own; the filter is the app's first `ICollectionView`, client-side. "YOU" is a word in a
+  column, with the row tint strictly secondary (NFR-8)
+- [x] **M** Manual refresh by default; optional user-chosen interval; **no query at all while the
+  view is closed** — PR-5.5, PR-6.4. The decision lives in `RefreshPolicy` in `Ims.Core`, not in
+  the view model, so all three clauses are unit-tested. Deselecting the tab suspends as surely as
+  closing it, and `ViewClosed` is terminal
+- [x] **M** Name the equivalent `onstat` command on every view (`-g ses`, `-g sql`, `-g lok`) and
+  expose the raw output — PR-8.2, PR-8.3. `ServerQuery` carries purpose, SQL and the `onstat`
+  equivalent together, so the pair cannot drift; failed sections show their query and why
+- [~] **S** Instance indicators: version, mode, uptime, session count, buffer efficiency,
+  checkpoint recency — PR-5.6. Built as a header strip. Each degrades to "Unknown" independently
+- [x] **S** Lock-wait dependency chain for >2 sessions — PR-5.7. `LockWaitChain` in `Ims.Core`,
+  pure and cycle-safe. **Unexercised against real data**
+- [ ] ~~Terminate a session~~ — **excluded**, PR-5.8 / DEC-2. Do not build. It pulls in a
+  confirmation framework and an audit store (DEC-8)
+- [ ] Exit check: two sessions, one blocking the other, identified from the UI alone — §5.
+  **Still open, and it is the acceptance bar.** See below
+
+### What is unverified, and why — read this before trusting the monitor
+
+Slice 3 was written without a live server to check against. The consequence is concentrated in
+one place: **`sysmaster` column names.** `syssessions.sid` and `.username` are confirmed — the
+Slice 0 smoke test read them as an ordinary developer, which is what answered Q-1 — and
+everything else is an educated guess.
+
+So the reader follows `GetTableDetailAsync`'s shape at the smallest useful granularity: every
+uncertain read is wrapped on its own, and a missing column costs one section of one pane rather
+than the view. Two invariants in `SessionQueries.cs` back it up, both enforced by tests:
+
+1. **Every query is bounded before it is sent** — `FIRST n` plus a 10s timeout. `Cancel()` does
+   not reach this server, so a token stops IMS waiting and the statement runs on (RSK-5).
+2. **No query selects an INTERVAL**, because `System.Data.Odbc` cannot read one and every column
+   at or after it dies too. Durations are epoch integers converted client-side. Uncertain columns
+   go **last** in the select list so a surprise type costs one column, not the tail.
+
+**Run `Ims.SmokeTest --probe-sessions` before relying on any of this.** It checks each uncertain
+object and column in turn and reports which this server actually exposes — bounded by `FIRST`, so
+it is safe on a shared instance. It is the intended way to settle the guesses; update
+`SessionQueries.cs` with the real names and re-run.
+
+### Measured against 14.10.FC10W2X7 on 2026-08-13 — three findings, two of them corrections
+
+The monitor was run against the UAT instance (`pronto_net/t01`) as an ordinary account. The
+degradation held — every failure below was an Information-level log and a named pane section,
+never a crash — but three guesses were wrong and the code has been changed to match:
+
+| What | Server said | What changed |
+|---|---|---|
+| **`syslocks` self-join** | `HYT00 Timeout expired`, repeatedly, at the 10s cap | **Replaced.** `syslocks` is a pseudo-table over shared memory with no indexes, so the join is quadratic in the lock count and nothing makes it cheaper. PR-5.3 now reads `syslocks.waiter` in a single scan; the join survives only as a hard-capped (50 rows) fallback that reports *contention*, never a named blocker |
+| **`sysrstcb.dbnum`** | `42S22: Column (dbnum) not found` | **Removed from the select list.** It took the two memory columns with it — one absent name costs everything selected alongside it — so that query now asks for as little as it can |
+| **`syssqlcurses`** | `42000: No SELECT permission` | **Nothing to change.** The table exists and the column names may well be right; an ordinary account simply cannot read it. So PR-5.1's "current SQL" is a *privilege* limit on this estate, not a naming error, and no amount of query fixing will reach it. Granting `SELECT` on `syssqlcurses` would — that is a DBA decision, and PR-6.1 says IMS must not work around it |
+
+The timeout finding is the important one, and it generalises: **a query that only completes on an
+idle instance is no use on the busy one where a blocked session actually matters.** Ten seconds
+was already a deliberately short cap; the join could not meet it.
+
+Still unconfirmed: `syssessions.feprogram`, `.state` and `.connected`, and — now the load-bearing
+unknown — **whether `syslocks.waiter` exists on 14.10**. If it does not, PR-5.3 falls back to a
+query measured to time out, and the honest answer becomes `Unknown`. `--probe-sessions` checks it
+directly.
+
+**PR-5.3 is the one to watch.** It now reads `syslocks.waiter` — the session the server has
+already queued behind a lock, so no lock-mode test is applied on that path: Informix decided the
+modes conflict before it made anyone wait. The self-join fallback is different, and its rows are
+only ever *contention*, because two sessions on one resource may both hold compatible locks and
+block nothing. The result is graded rather than asserted:
+
+| Fidelity | What the UI says |
+|---|---|
+| `BlockerIdentified` | "N session(s) blocked", with the blocker named in the row |
+| `ContentionOnly` | "Sessions are contending on the same rows; IMS cannot tell which is waiting" |
+| `Unknown` | "This server does not expose lock waits to IMS" |
+
+That grading is not hedging. **The worst remaining failure mode is `syslocks.owner` being a
+process id rather than a session id** — it is read as the holder's session id on both paths, so if
+it is a pid, IMS names the wrong blocker silently, and someone might interrupt a colleague's work
+on its word. Nothing measured so far settles it: a wrong number here looks exactly like a right
+one. It is why an unrecognised lock mode is treated as *not* conflicting on the fallback path,
+downgrading the answer rather than inventing a blocker, and why the two-session exit check below
+still matters even though the algorithm is well covered.
+
+**Per-session temp space is deliberately absent**, not forgotten. Deriving it needs partition
+detail IMS does not read, and PR-8.4 rules out presenting an inference as a fact. Temp space is
+explained at the instance level instead (`InformixConcepts.TempSpace`).
+
+**Current SQL is in the detail pane, not the list.** PR-5.1 names it among the list columns, so
+this is a conscious reading of the requirement: the statement text is the largest thing this
+slice fetches, and pulling it for 500 rows on every refresh is the one query here that would not
+be negligible (PR-6.4). It is also the least certain table, so keeping it out of the list means a
+wrong column name costs a pane section rather than the session list. If daily use wants it in the
+list, fetch it as a second bounded read over the returned sids — never as a join, which would
+take the list down with it.
+
+**The §5 acceptance test cannot be run here.** It needs two sessions with one blocking the other,
+and DEP-2 is unmet: `testdb` sits on the production server, so there is nowhere safe to arrange a
+lock wait. `LockWaitChainTests` covers the shapes a live server would not reliably produce anyway
+— a three-deep chain, a fork, a genuine deadlock cycle, a session stranded behind one — but a
+test of the algorithm is not a test of the query feeding it. **This stays open.**
+
+Also fixed on the way through, both real: `ShowHostForSelectedTab` was a two-way boolean that
+rendered a greyed-out empty editor for any third tab kind, and `ShutdownAsync` iterated
+`EditorTabs` only — so a monitor's refresh timer would have survived shutdown, leaving a closing
+IMS still querying a production instance.
 
 ---
 

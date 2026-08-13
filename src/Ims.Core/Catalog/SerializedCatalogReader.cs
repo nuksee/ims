@@ -1,3 +1,5 @@
+using Ims.Core.Monitoring;
+
 namespace Ims.Core.Catalog;
 
 /// <summary>
@@ -17,8 +19,16 @@ namespace Ims.Core.Catalog;
 /// production server. A semaphore is cheaper than a session, and metadata queries
 /// are short enough that waiting behind one is not felt.
 /// </para>
+/// <para>
+/// Session monitoring (<see cref="ISessionMonitor"/>) goes through the same gate, because
+/// it goes down the same connection and therefore the same one cursor. Giving the monitor a
+/// gate of its own would be two gates over one cursor, which is precisely the failure this
+/// class exists to prevent — so the monitor waits behind a tree expansion instead. That is
+/// the cost of not spending a third session per instance (PR-6.4).
+/// </para>
 /// </remarks>
-public sealed class SerializedCatalogReader(ICatalogReader inner) : ICatalogReader, IAsyncDisposable
+public sealed class SerializedCatalogReader(ICatalogReader inner)
+    : ICatalogReader, ISessionMonitor, IAsyncDisposable
 {
     private readonly ICatalogReader _inner = inner ?? throw new ArgumentNullException(nameof(inner));
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -51,6 +61,49 @@ public sealed class SerializedCatalogReader(ICatalogReader inner) : ICatalogRead
 
     public Task<CatalogResult<string>> GetOwnersAsync(CancellationToken cancellationToken) =>
         RunAsync(() => _inner.GetOwnersAsync(cancellationToken), cancellationToken);
+
+    // ---- Session monitoring, through the same gate (PR-5.1 to PR-5.6) -----------
+
+    /// <summary>
+    /// The reader underneath, when it monitors sessions as well as reading schema.
+    /// </summary>
+    /// <remarks>
+    /// The constructor still takes a plain <see cref="ICatalogReader"/> rather than
+    /// requiring both. Tightening it would break every caller that has only a catalogue
+    /// reader — the completion cache and every test double — for the sake of a capability
+    /// they never ask about.
+    /// </remarks>
+    private ISessionMonitor? Monitor => _inner as ISessionMonitor;
+
+    /// <inheritdoc />
+    public bool? SysMasterReadable => Monitor?.SysMasterReadable;
+
+    /// <inheritdoc />
+    public Task<SessionSnapshot> GetSessionsAsync(CancellationToken cancellationToken) =>
+        Monitor is { } monitor
+            ? RunAsync(() => monitor.GetSessionsAsync(cancellationToken), cancellationToken)
+            : Task.FromResult(SessionSnapshot.Unavailable(NotAMonitor, DateTimeOffset.Now));
+
+    /// <inheritdoc />
+    public Task<SessionDetail> GetSessionDetailAsync(int sid, CancellationToken cancellationToken) =>
+        Monitor is { } monitor
+            ? RunAsync(() => monitor.GetSessionDetailAsync(sid, cancellationToken), cancellationToken)
+            : Task.FromResult(new SessionDetail
+            {
+                Sid = sid,
+                LocksHeld = [],
+                Waits = [],
+                Queries = [],
+            });
+
+    /// <inheritdoc />
+    public Task<InstanceIndicators> GetInstanceIndicatorsAsync(CancellationToken cancellationToken) =>
+        Monitor is { } monitor
+            ? RunAsync(() => monitor.GetInstanceIndicatorsAsync(cancellationToken), cancellationToken)
+            : Task.FromResult(InstanceIndicators.None);
+
+    private const string NotAMonitor =
+        "This connection's reader does not monitor sessions.";
 
     private async Task<T> RunAsync<T>(Func<Task<T>> work, CancellationToken cancellationToken)
     {

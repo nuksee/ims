@@ -257,6 +257,12 @@ internal static class Program
                                after a driver or server upgrade, or to re-establish
                                the baseline the async spike is read against.
 
+              --probe-sessions Check which sysmaster columns the Slice 3 session monitor
+                               can actually read on this server. Several of its column
+                               names were written without a server to confirm them, so
+                               run this before relying on the monitor. Every statement
+                               is capped with FIRST, so it is safe on a shared instance.
+
               -h, --help       Show this text and exit. Touches nothing.
 
             PROBES
@@ -288,6 +294,13 @@ internal static class Program
                                                                     [either load flag]
               sysmaster readable  Q-1, AS-3       THE Slice 3 gate. Run this as an
                                                   ordinary developer, not as informix.
+              Session monitor     PR-5.1, PR-5.2, Which sysmaster columns this server
+              shape               PR-5.6          actually exposes. Slice 3 was written
+                                                  without a server to check against, so
+                                                  several of its column names are
+                                                  unconfirmed — this settles them. Bounded
+                                                  by FIRST, safe on a shared instance.
+                                                                    [--probe-sessions]
 
             NOTES
               Every statement sent is printed with its result (PR-6.2, PR-8.2).
