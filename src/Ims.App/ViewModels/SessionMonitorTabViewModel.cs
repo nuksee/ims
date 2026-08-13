@@ -164,18 +164,20 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
     /// True when the lock read failed for want of time rather than for want of the object.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// <c>syslocks</c> is synthesised from shared memory across every lock in the instance, so
     /// on a busy server it can cost more than the monitor's whole budget to materialise —
     /// measured against 14.10 on 2026-08-13, where even a single scan with no join exceeded ten
     /// seconds. That is a fact about the instance, not a defect, and the UI says which.
+    /// </para>
+    /// <para>
+    /// Read from the outcome the reader recorded. The first version matched a SQLSTATE inside the
+    /// error message, which was fragile enough to be wrong in practice — the message shape it
+    /// expected was not the one that arrived, so a timeout still read as "does not expose".
+    /// </para>
     /// </remarks>
     public bool LockWaitsTimedOut =>
-        _snapshot?.Queries.Any(q =>
-            q.Outcome is ServerQueryOutcome.Failed
-            && q.Purpose.StartsWith("Lock", StringComparison.Ordinal)
-            && q.Message is { } m
-            && (m.Contains("HYT00", StringComparison.Ordinal)
-                || m.Contains("HY008", StringComparison.Ordinal))) ?? false;
+        _snapshot?.Queries.Any(q => q.Outcome is ServerQueryOutcome.TimedOut) ?? false;
 
     /// <summary>How many sessions are waiting on another (PR-5.3).</summary>
     public int BlockedCount => _snapshot?.Waits.Select(w => w.WaiterSid).Distinct().Count() ?? 0;
@@ -227,9 +229,20 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
                     text.Append("-- At the command line: ").AppendLine(onstat);
                 }
 
-                if (query.Outcome is not ServerQueryOutcome.Succeeded)
+                // Named per outcome, because someone reading this block to decide what to do
+                // next needs to know which: a timeout means run it yourself with more patience,
+                // a refusal means it will never answer for this account.
+                string? note = query.Outcome switch
                 {
-                    text.Append("-- This did not answer: ").AppendLine(query.Message);
+                    ServerQueryOutcome.Failed => "-- The server refused this: ",
+                    ServerQueryOutcome.TimedOut => "-- This timed out on the server: ",
+                    ServerQueryOutcome.NotAttempted => "-- IMS did not send this: ",
+                    _ => null,
+                };
+
+                if (note is not null)
+                {
+                    text.Append(note).AppendLine(query.Message);
                 }
 
                 text.AppendLine(query.Sql);

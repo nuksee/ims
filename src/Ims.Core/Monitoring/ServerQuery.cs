@@ -48,6 +48,18 @@ public enum ServerQueryOutcome
     /// <summary>The server refused it — a missing catalogue object, or no privilege.</summary>
     Failed,
 
+    /// <summary>
+    /// The server ran out of time rather than objecting.
+    /// </summary>
+    /// <remarks>
+    /// Its own outcome rather than a kind of <see cref="Failed"/>, because it means something
+    /// different to the person reading it: the object is there and IMS could not afford it, which
+    /// points at the command line rather than at a privilege. Telling them apart by matching a
+    /// SQLSTATE in the message text was the first attempt and it was fragile — the reader already
+    /// knows which happened, so it says so here instead of leaving the UI to infer it.
+    /// </remarks>
+    TimedOut,
+
     /// <summary>Not sent, because something it depended on had already failed.</summary>
     NotAttempted,
 }

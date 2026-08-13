@@ -80,6 +80,46 @@ public sealed class SessionSnapshotTests
     }
 
     [Fact]
+    public void A_timeout_is_its_own_outcome_not_a_kind_of_failure()
+    {
+        // They mean different things to the person reading the pane: a timeout says the object
+        // is there and IMS could not afford it, which points at onstat; a refusal says it will
+        // never answer for this account. The UI said "this server does not expose lock waits"
+        // for a syslocks timeout until this became a distinct outcome — a small lie about the
+        // server (PR-8.2) that would send someone hunting a permission that was never at fault.
+        ServerQuery timedOut = new(
+            "Lock waits",
+            "SELECT FIRST 200 waiter, owner FROM sysmaster:syslocks WHERE waiter IS NOT NULL",
+            "onstat -g lok",
+            ServerQueryOutcome.TimedOut,
+            "HYT00: Timeout expired.");
+
+        timedOut.Outcome.Should().Be(ServerQueryOutcome.TimedOut);
+        timedOut.Outcome.Should().NotBe(ServerQueryOutcome.Failed);
+        timedOut.OnstatEquivalent.Should().Be(
+            "onstat -g lok",
+            "because naming the command that can still answer is the point when IMS cannot");
+    }
+
+    [Fact]
+    public void A_query_skipped_after_a_timeout_says_it_was_never_sent()
+    {
+        // The fallback reads the same pseudo-table, so once syslocks has timed out it cannot do
+        // better — attempting it anyway doubled the wait to reach the same answer. It still
+        // appears in the PR-8.2 list, because a query IMS decided not to send is part of what
+        // the user is entitled to see.
+        ServerQuery skipped = new(
+            "Lock contention (fallback)",
+            "SELECT FIRST 50 w.owner FROM sysmaster:syslocks w, sysmaster:syslocks h",
+            "onstat -g lok",
+            ServerQueryOutcome.NotAttempted,
+            "Not sent: syslocks timed out, and this reads the same pseudo-table.");
+
+        skipped.Outcome.Should().Be(ServerQueryOutcome.NotAttempted);
+        skipped.Message.Should().Contain("same pseudo-table");
+    }
+
+    [Fact]
     public void Session_detail_separates_who_blocks_from_who_is_blocked()
     {
         // Both directions matter and they are different questions. "What am I waiting on"

@@ -304,7 +304,8 @@ public sealed partial class InformixCatalogReader
         {
             queries.Add(new ServerQuery(
                 "Lock waits", SessionQueries.LockWaits, onstat,
-                ServerQueryOutcome.Failed, Describe(ex)));
+                IsTimeout(ex) ? ServerQueryOutcome.TimedOut : ServerQueryOutcome.Failed,
+                Describe(ex)));
 
             // A timeout means syslocks itself is too expensive to read on this instance, not
             // that this particular query was wrong — so the fallback, which reads the same
@@ -400,14 +401,30 @@ public sealed partial class InformixCatalogReader
         {
             _hasLockDetail = false;
 
-            _logger.LogInformation(
-                "This server does not expose sysmaster:syslocks to IMS, so lock waits "
-                + "cannot be reported: {Message}",
-                ex.Message);
+            bool timedOut = IsTimeout(ex);
+
+            // Two calls rather than one with a chosen template: a template that varies between
+            // calls cannot be grouped or searched on, which is most of what structured logging
+            // is for.
+            if (timedOut)
+            {
+                _logger.LogInformation(
+                    "sysmaster:syslocks timed out, so lock waits cannot be reported on this "
+                    + "instance: {Message}",
+                    ex.Message);
+            }
+            else
+            {
+                _logger.LogInformation(
+                    "This server does not expose sysmaster:syslocks to IMS, so lock waits "
+                    + "cannot be reported: {Message}",
+                    ex.Message);
+            }
 
             queries.Add(new ServerQuery(
                 "Lock contention (fallback)", SessionQueries.LockContention, onstat,
-                ServerQueryOutcome.Failed, Describe(ex)));
+                timedOut ? ServerQueryOutcome.TimedOut : ServerQueryOutcome.Failed,
+                Describe(ex)));
 
             return ([], LockWaitFidelity.Unknown);
         }
