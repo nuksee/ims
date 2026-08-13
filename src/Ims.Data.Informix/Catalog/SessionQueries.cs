@@ -270,10 +270,18 @@ internal static class SessionQueries
     /// complete when it fails.
     /// </para>
     /// <para>
-    /// <c>dbnum</c> was in this list until 2026-08-13, when 14.10.FC10W2X7 answered
-    /// <c>42S22: Column (dbnum) not found</c>. Removed rather than left to fail, because it
-    /// took the two memory columns with it — one absent name costs everything selected
-    /// alongside it, which is why this query now asks for as little as it can.
+    /// <strong>Not sent, and that is the current state of PR-5.2's resource half.</strong> The
+    /// column names here were guesses, and 14.10.FC10W2X7 rejected them one at a time:
+    /// <c>dbnum</c> on 2026-08-13, then <c>memtotal</c> on the very next run once <c>dbnum</c>
+    /// was removed. Guessing again would cost another round trip per session click to learn the
+    /// same thing about the next name in the list.
+    /// </para>
+    /// <para>
+    /// So the query is kept — it is still shown under PR-8.2, marked as not attempted, so the
+    /// user can see what IMS would ask and why it does not — but
+    /// <see cref="ResourceColumnsAreVerified"/> gates it off until someone runs
+    /// <c>--probe-sessions</c> and puts real names here. An honest gap beats a query that exists
+    /// only to fail.
     /// </para>
     /// </remarks>
     public const string SessionResources = """
@@ -282,6 +290,16 @@ internal static class SessionQueries
           FROM sysmaster:sysrstcb
          WHERE sid = ?
         """;
+
+    /// <summary>
+    /// Whether <see cref="SessionResources"/>' column names have been confirmed against a server.
+    /// </summary>
+    /// <remarks>
+    /// False, deliberately, and a constant rather than a setting: it is a fact about what this
+    /// code knows, not a preference. Set it true in the same commit that corrects the names, and
+    /// only on the strength of a probe run — not on the strength of documentation.
+    /// </remarks>
+    public const bool ResourceColumnsAreVerified = false;
 
     /// <summary>
     /// The instance's mode and boot time (PR-5.6).

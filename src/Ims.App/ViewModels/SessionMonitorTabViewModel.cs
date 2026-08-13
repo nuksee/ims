@@ -66,6 +66,33 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
     private bool _isReading;
 
     /// <summary>
+    /// Why the read is taking a while, once it has been long enough to need saying.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Null for the first few seconds, because most reads finish inside that and a warning about
+    /// a wait that is already over is just noise. It appears only once the wait is long enough
+    /// that the user has started wondering — which is the moment a bare spinner stops being
+    /// enough and they need to know whether to keep waiting.
+    /// </para>
+    /// <para>
+    /// It names <c>onstat</c> for the same reason PR-8.3 does everywhere else: if IMS is going to
+    /// be slow at something the command line is fast at, saying so is more use than hiding it.
+    /// </para>
+    /// </remarks>
+    [ObservableProperty]
+    private string? _slowReadNotice;
+
+    /// <summary>
+    /// How long a read may run before it explains itself.
+    /// </summary>
+    /// <remarks>
+    /// Three seconds: past NFR-1's 200 ms acknowledgement by enough that something is clearly
+    /// wrong, and short enough to appear well before the user gives up.
+    /// </remarks>
+    private static readonly TimeSpan SlowReadThreshold = TimeSpan.FromSeconds(3);
+
+    /// <summary>
     /// True while the selected session's detail is being read (PR-5.2).
     /// </summary>
     /// <remarks>
@@ -368,6 +395,12 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
             .CreateLinkedTokenSource(cancellationToken, _closing.Token);
 
         IsReading = true;
+        SlowReadNotice = null;
+
+        // Explains itself if it outlasts the threshold, and says nothing if it does not. The
+        // timer is discarded either way, so a fast read costs one cancellation.
+        using var slow = new CancellationTokenSource();
+        _ = AnnounceIfSlowAsync(slow.Token);
 
         try
         {
@@ -389,8 +422,37 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
         }
         finally
         {
+            await slow.CancelAsync().ConfigureAwait(true);
             IsReading = false;
+            SlowReadNotice = null;
         }
+    }
+
+    /// <summary>
+    /// Says why a read is slow, once it has been slow long enough to be worth saying.
+    /// </summary>
+    /// <remarks>
+    /// The wording depends on what the last read learned. Once <c>syslocks</c> has timed out IMS
+    /// stops asking for it, so the wait shortens on its own — telling the user that is more use
+    /// than a spinner, because it says the next refresh will be quicker rather than leaving them
+    /// to conclude the feature is broken.
+    /// </remarks>
+    private async Task AnnounceIfSlowAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(SlowReadThreshold, cancellationToken).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+
+        SlowReadNotice = LockWaitsTimedOut
+            ? "Reading locks has already timed out on this instance, so IMS has stopped asking "
+                + "for them — this refresh should be quicker. onstat -g lok reads them directly."
+            : "sysmaster is a view over the server's shared memory, so this can be slow on a "
+                + "busy instance. IMS caps each query and gives up rather than holding on.";
     }
 
     private async Task ReadIndicatorsAsync(CancellationToken cancellationToken = default)

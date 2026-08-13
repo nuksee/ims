@@ -43,6 +43,23 @@ public sealed partial class InformixCatalogReader
     /// <summary>Null until probed; whether the full session list shape exists.</summary>
     private bool? _hasFullSessionColumns;
 
+    /// <summary>
+    /// Null until probed; whether the current statement can be read at all.
+    /// </summary>
+    /// <remarks>
+    /// Remembered because the answer does not change while the connection lives, and asking
+    /// again costs a round trip per session the user clicks. On this estate the answer is a
+    /// permission refusal, which will not change at all — so re-asking is pure latency added to
+    /// every click for no chance of a different result.
+    /// </remarks>
+    private bool? _canReadCurrentSql;
+
+    /// <summary>Null until probed; whether the resource counters can be read.</summary>
+    private bool? _canReadResources;
+
+    /// <summary>Null until probed; whether locks can be read within the time allowed.</summary>
+    private bool? _canReadLocks;
+
     /// <inheritdoc />
     public bool? SysMasterReadable => _sysMasterReadable;
 
@@ -102,6 +119,14 @@ public sealed partial class InformixCatalogReader
         DateTimeOffset readAt = DateTimeOffset.Now;
         List<ServerQuery> queries = [];
 
+        // Timed because the arithmetic did not add up: a 10-second CommandTimeout produced a
+        // 57-second wait before the list appeared (measured 2026-08-13). Either the driver
+        // applies the cap to something narrower than the whole round trip, or the queries are
+        // queueing behind each other and the shared catalogue connection. NFR-1 makes this a
+        // functional question rather than a curiosity, so the answer is logged rather than
+        // guessed at.
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
+
         // sysmaster is the gate for everything else here, so a refusal ends the read
         // rather than producing five more failures that all say the same thing.
         (IReadOnlyList<SessionInfo>? sessions, string? failure) = await ReadSessionsAsync(
@@ -115,11 +140,25 @@ public sealed partial class InformixCatalogReader
         }
 
         _sysMasterReadable = true;
+        long listMs = elapsed.ElapsedMilliseconds;
 
         int? total = await ReadSessionCountAsync(queries, cancellationToken).ConfigureAwait(false);
+        long countMs = elapsed.ElapsedMilliseconds;
 
         (IReadOnlyList<LockWaitEdge> waits, LockWaitFidelity fidelity) = await ReadLockWaitsAsync(
             queries, cancellationToken).ConfigureAwait(false);
+
+        // Per phase, so a slow refresh can be attributed rather than argued about. The lock read
+        // is the one that has been over budget, and the gap between its share and the configured
+        // timeout is the measurement that says whether CommandTimeout is bounding it at all.
+        _logger.LogInformation(
+            "Session refresh: list {ListMs} ms, count {CountMs} ms, locks {LockMs} ms, "
+            + "total {TotalMs} ms against a {Timeout}s per-statement cap.",
+            listMs,
+            countMs - listMs,
+            elapsed.ElapsedMilliseconds - countMs,
+            elapsed.ElapsedMilliseconds,
+            SessionQueries.TimeoutSeconds);
 
         return new SessionSnapshot
         {
@@ -275,6 +314,20 @@ public sealed partial class InformixCatalogReader
     {
         const string onstat = "onstat -g lok, onstat -K";
 
+        // Once syslocks has timed out, it is not going to start answering within ten seconds on
+        // the next refresh. Retrying it put a full timeout in front of every refresh and every
+        // session click — which is most of where the minute went before the list appeared.
+        if (_canReadLocks is false)
+        {
+            queries.Add(new ServerQuery(
+                "Lock waits", SessionQueries.LockWaits, onstat,
+                ServerQueryOutcome.NotAttempted,
+                "Not sent: reading syslocks already exceeded the time allowed on this "
+                + "connection, so IMS does not spend it again. Use onstat -g lok."));
+
+            return ([], LockWaitFidelity.Unknown);
+        }
+
         try
         {
             IReadOnlyList<LockWaitEdge> edges = await QueryAsync(
@@ -284,6 +337,7 @@ public sealed partial class InformixCatalogReader
                 cancellationToken).ConfigureAwait(false);
 
             _hasLockDetail = true;
+            _canReadLocks = true;
             queries.Add(new ServerQuery("Lock waits", SessionQueries.LockWaits, onstat));
 
             // No lock-mode test here, deliberately. syslocks.waiter means the server has
@@ -318,6 +372,7 @@ public sealed partial class InformixCatalogReader
             if (IsTimeout(ex))
             {
                 _hasLockDetail = false;
+                _canReadLocks = false;
 
                 _logger.LogInformation(
                     "sysmaster:syslocks timed out, so lock waits cannot be reported on this "
@@ -387,6 +442,7 @@ public sealed partial class InformixCatalogReader
                 cancellationToken).ConfigureAwait(false);
 
             _hasLockDetail = true;
+            _canReadLocks = true;
             queries.Add(new ServerQuery(
                 "Lock contention (fallback)", SessionQueries.LockContention, onstat));
 
@@ -400,6 +456,7 @@ public sealed partial class InformixCatalogReader
         catch (OdbcException ex)
         {
             _hasLockDetail = false;
+            _canReadLocks = false;
 
             bool timedOut = IsTimeout(ex);
 
@@ -514,6 +571,19 @@ public sealed partial class InformixCatalogReader
     {
         const string onstat = "onstat -g sql";
 
+        // Asked once per connection. A refusal or a missing column will not become an answer on
+        // the next click, and re-asking put a round trip in front of every selection.
+        if (_canReadCurrentSql is false)
+        {
+            queries.Add(new ServerQuery(
+                "Current SQL", SessionQueries.CurrentSql, onstat,
+                ServerQueryOutcome.NotAttempted,
+                "Not sent: this connection has already been refused this, so IMS does not ask "
+                + "again. Use onstat -g sql, or ask for SELECT on sysmaster:syssqlcurses."));
+
+            return (null, false);
+        }
+
         try
         {
             IReadOnlyList<string?> statements = await QueryAsync(
@@ -523,6 +593,7 @@ public sealed partial class InformixCatalogReader
                 cancellationToken,
                 sid).ConfigureAwait(false);
 
+            _canReadCurrentSql = true;
             queries.Add(new ServerQuery("Current SQL", SessionQueries.CurrentSql, onstat));
 
             string? text = statements.Count > 0 ? statements[0]?.TrimEnd() : null;
@@ -533,14 +604,19 @@ public sealed partial class InformixCatalogReader
         }
         catch (OdbcException ex)
         {
+            // Remembered, so the next click does not pay for the same refusal.
+            _canReadCurrentSql = false;
+
             _logger.LogInformation(
                 "This server does not expose sysmaster:syssqlcurses as IMS expects, so the "
-                + "current statement cannot be shown: {Message}",
+                + "current statement cannot be shown, and IMS will not ask again on this "
+                + "connection: {Message}",
                 ex.Message);
 
             queries.Add(new ServerQuery(
                 "Current SQL", SessionQueries.CurrentSql, onstat,
-                ServerQueryOutcome.Failed, Describe(ex)));
+                IsTimeout(ex) ? ServerQueryOutcome.TimedOut : ServerQueryOutcome.Failed,
+                Describe(ex)));
 
             return (null, false);
         }
@@ -607,6 +683,24 @@ public sealed partial class InformixCatalogReader
     {
         const string onstat = "onstat -g ses <sid>";
 
+        // Not sent while the column names are unverified, and not sent again once refused. The
+        // names here were guesses and 14.10 rejected them one per run — dbnum, then memtotal
+        // once dbnum was gone. Another guess costs a round trip per click to learn the same
+        // thing about the next name, so PR-5.2's resource half waits for --probe-sessions.
+        if (!SessionQueries.ResourceColumnsAreVerified || _canReadResources is false)
+        {
+            queries.Add(new ServerQuery(
+                "Resources", SessionQueries.SessionResources, onstat,
+                ServerQueryOutcome.NotAttempted,
+                SessionQueries.ResourceColumnsAreVerified
+                    ? "Not sent: this connection has already been refused this."
+                    : "Not sent: these sysrstcb column names are unverified, and the ones tried "
+                        + "so far were rejected one per run. Run the smoke test with "
+                        + "--probe-sessions to establish the real names."));
+
+            return null;
+        }
+
         try
         {
             IReadOnlyList<SessionResources> resources = await QueryAsync(
@@ -620,19 +714,24 @@ public sealed partial class InformixCatalogReader
                 cancellationToken,
                 sid).ConfigureAwait(false);
 
+            _canReadResources = true;
             queries.Add(new ServerQuery("Resources", SessionQueries.SessionResources, onstat));
             return resources.Count > 0 ? resources[0] : null;
         }
         catch (OdbcException ex)
         {
+            _canReadResources = false;
+
             _logger.LogInformation(
                 "This server does not expose sysmaster:sysrstcb as IMS expects, so session "
-                + "resource use cannot be reported: {Message}",
+                + "resource use cannot be reported, and IMS will not ask again on this "
+                + "connection: {Message}",
                 ex.Message);
 
             queries.Add(new ServerQuery(
                 "Resources", SessionQueries.SessionResources, onstat,
-                ServerQueryOutcome.Failed, Describe(ex)));
+                IsTimeout(ex) ? ServerQueryOutcome.TimedOut : ServerQueryOutcome.Failed,
+                Describe(ex)));
 
             return null;
         }

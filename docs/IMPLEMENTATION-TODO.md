@@ -403,7 +403,7 @@ never a crash — but three guesses were wrong and the code has been changed to 
 | What | Server said | What changed |
 |---|---|---|
 | **`syslocks` — any read of it** | `HYT00 Timeout expired`, at the 10s cap, for the self-join *and* for a plain single scan | See below. **This is the finding that matters** |
-| **`sysrstcb.dbnum`** | `42S22: Column (dbnum) not found` | **Removed from the select list.** It took the two memory columns with it — one absent name costs everything selected alongside it — so that query now asks for as little as it can |
+| **`sysrstcb.dbnum`, then `.memtotal`** | `42S22: Column (dbnum) not found`; after removing it, `Column (memtotal) not found` on the very next run | **The read is switched off.** Two guesses rejected one per run is a pattern, not bad luck, and a third would cost a round trip per session click to learn the same about the next name. `ResourceColumnsAreVerified` is false until `--probe-sessions` establishes real ones; the query is still shown under PR-8.2 as `NotAttempted`, with the reason |
 | **`syssqlcurses`** | `42000: No SELECT permission` | **Nothing to change.** The table exists and the column names may well be right; an ordinary account simply cannot read it. So PR-5.1's "current SQL" is a *privilege* limit on this estate, not a naming error, and no amount of query fixing will reach it. Granting `SELECT` on `syssqlcurses` would — that is a DBA decision, and PR-6.1 says IMS must not work around it |
 
 #### `syslocks` cannot be read inside a monitor's budget on this estate — and that is PR-5.3
@@ -430,6 +430,34 @@ Three consequences, all now in the code:
    (NFR-1), and `Cancel()` does not reach this server, so a longer cap means a longer *unstoppable*
    statement holding the connection the object tree shares (PR-6.4). The honest position is that
    PR-5.3 is not reachable through `syslocks` on a busy instance, and `onstat -g lok` is.
+
+#### A failed read is now remembered, because retrying it was most of the wait
+
+Reported 2026-08-13: **the list took about a minute to appear.** The cause was not one slow
+query but the same failures being paid for repeatedly. Every refresh re-ran the `syslocks`
+timeout, and every session click re-ran the `syssqlcurses` refusal and the `sysrstcb` column
+error — none of which could give a different answer on the same connection.
+
+So each of those outcomes is now remembered per connection, in the tri-state `bool?` pattern
+`_hasStatisticsTimestamp` established for PR-2.5:
+
+| Read | Once it has failed |
+|---|---|
+| `syslocks` (lock waits) | Not sent again. This is the expensive one, and it was costing a full timeout on every refresh *and* every click |
+| `syssqlcurses` (current SQL) | Not sent again — it is a permission refusal, which will not change at all |
+| `sysrstcb` (resources) | Not sent at all until the column names are verified |
+
+Every skipped query still appears in the PR-8.2 list as `NotAttempted` with the reason, because
+a query IMS decided not to send is part of what the user is entitled to see. The effect is that
+the first refresh on a server like this one pays the timeout once and every one after it is
+quick — where before, the cost recurred for as long as the tab stayed open.
+
+**The timeout arithmetic is still unexplained and is now instrumented.** A 10-second
+`CommandTimeout` produced a 57-second wait before the list appeared, which means the cap is not
+bounding the whole round trip the way RSK-5 assumes. `GetSessionsAsync` now logs its per-phase
+timings against the configured cap, so the next run says where the time actually goes rather than
+leaving it to be argued about. Until that is understood, **treat "bounded before it is sent" as
+holding for the statement but not measured for the round trip.**
 
 **So PR-5.3 is unmet on this estate, and the reason is performance rather than shape.** The
 resolver, the fidelity grading and the chain logic are all built and tested and would work the
