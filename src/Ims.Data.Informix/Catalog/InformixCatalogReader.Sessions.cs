@@ -119,57 +119,76 @@ public sealed partial class InformixCatalogReader
         DateTimeOffset readAt = DateTimeOffset.Now;
         List<ServerQuery> queries = [];
 
-        // Timed because the arithmetic did not add up: a 10-second CommandTimeout produced a
-        // 57-second wait before the list appeared (measured 2026-08-13). Either the driver
-        // applies the cap to something narrower than the whole round trip, or the queries are
-        // queueing behind each other and the shared catalogue connection. NFR-1 makes this a
-        // functional question rather than a curiosity, so the answer is logged rather than
-        // guessed at.
+        // Both ends are logged, not just the total. A 10-second CommandTimeout produced a
+        // 57-second wait before the list appeared (measured 2026-08-13), so the cap is not
+        // bounding the whole round trip the way RSK-5 assumes — and NFR-1 makes that a
+        // functional question rather than a curiosity.
+        //
+        // The start line matters as much as the end one: a read that never returns leaves only
+        // its start, and "started and never finished" is the shape of the worst version of this
+        // bug. A total on its own cannot distinguish it from a read that was never attempted.
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
 
-        // sysmaster is the gate for everything else here, so a refusal ends the read
-        // rather than producing five more failures that all say the same thing.
-        (IReadOnlyList<SessionInfo>? sessions, string? failure) = await ReadSessionsAsync(
-            queries, cancellationToken).ConfigureAwait(false);
-
-        if (sessions is null)
-        {
-            _sysMasterReadable = false;
-            return SessionSnapshot.Unavailable(failure ?? "sysmaster could not be read.", readAt)
-                with { Queries = queries };
-        }
-
-        _sysMasterReadable = true;
-        long listMs = elapsed.ElapsedMilliseconds;
-
-        int? total = await ReadSessionCountAsync(queries, cancellationToken).ConfigureAwait(false);
-        long countMs = elapsed.ElapsedMilliseconds;
-
-        (IReadOnlyList<LockWaitEdge> waits, LockWaitFidelity fidelity) = await ReadLockWaitsAsync(
-            queries, cancellationToken).ConfigureAwait(false);
-
-        // Per phase, so a slow refresh can be attributed rather than argued about. The lock read
-        // is the one that has been over budget, and the gap between its share and the configured
-        // timeout is the measurement that says whether CommandTimeout is bounding it at all.
         _logger.LogInformation(
-            "Session refresh: list {ListMs} ms, count {CountMs} ms, locks {LockMs} ms, "
-            + "total {TotalMs} ms against a {Timeout}s per-statement cap.",
-            listMs,
-            countMs - listMs,
-            elapsed.ElapsedMilliseconds - countMs,
-            elapsed.ElapsedMilliseconds,
+            "Session refresh started, with a {Timeout}s cap on each statement.",
             SessionQueries.TimeoutSeconds);
 
-        return new SessionSnapshot
+        long listMs = 0;
+        long countMs = 0;
+
+        try
         {
-            Sessions = sessions,
-            Waits = waits,
-            Fidelity = fidelity,
-            TotalSessionCount = total,
-            IsCapped = sessions.Count >= SessionQueries.RowCap,
-            ReadAt = readAt,
-            Queries = queries,
-        };
+            // sysmaster is the gate for everything else here, so a refusal ends the read
+            // rather than producing five more failures that all say the same thing.
+            (IReadOnlyList<SessionInfo>? sessions, string? failure) = await ReadSessionsAsync(
+                queries, cancellationToken).ConfigureAwait(false);
+
+            listMs = elapsed.ElapsedMilliseconds;
+
+            if (sessions is null)
+            {
+                _sysMasterReadable = false;
+                return SessionSnapshot.Unavailable(failure ?? "sysmaster could not be read.", readAt)
+                    with { Queries = queries };
+            }
+
+            _sysMasterReadable = true;
+
+            int? total = await ReadSessionCountAsync(queries, cancellationToken).ConfigureAwait(false);
+            countMs = elapsed.ElapsedMilliseconds;
+
+            (IReadOnlyList<LockWaitEdge> waits, LockWaitFidelity fidelity) = await ReadLockWaitsAsync(
+                queries, cancellationToken).ConfigureAwait(false);
+
+            return new SessionSnapshot
+            {
+                Sessions = sessions,
+                Waits = waits,
+                Fidelity = fidelity,
+                TotalSessionCount = total,
+                IsCapped = sessions.Count >= SessionQueries.RowCap,
+                ReadAt = readAt,
+                Queries = queries,
+            };
+        }
+        finally
+        {
+            // In a finally so the timing survives the early return above and any throw. The
+            // first version logged only on the success path, which is precisely the case least
+            // in need of measuring.
+            //
+            // Phases rather than one total, because attributing the wait is the whole point: the
+            // gap between the lock read's share and the configured cap is the measurement that
+            // says whether CommandTimeout bounds it at all.
+            _logger.LogInformation(
+                "Session refresh finished in {TotalMs} ms — list {ListMs} ms, count {CountMs} ms, "
+                + "locks {LockMs} ms, against a {Timeout}s per-statement cap.",
+                elapsed.ElapsedMilliseconds,
+                listMs,
+                countMs == 0 ? 0 : countMs - listMs,
+                countMs == 0 ? 0 : elapsed.ElapsedMilliseconds - countMs,
+                SessionQueries.TimeoutSeconds);
+        }
     }
 
     /// <summary>
@@ -543,25 +562,52 @@ public sealed partial class InformixCatalogReader
 
         List<ServerQuery> queries = [];
 
-        (string? sql, bool truncated) = await ReadCurrentSqlAsync(sid, queries, cancellationToken)
-            .ConfigureAwait(false);
+        // Timed at both ends like the list read, and for the same reason: this is the one that
+        // runs per click, so a cost here is one the user pays repeatedly.
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
 
-        IReadOnlyList<LockInfo> locks = await ReadLocksHeldAsync(sid, queries, cancellationToken)
-            .ConfigureAwait(false);
+        _logger.LogInformation("Session {Sid} detail read started.", sid);
 
-        SessionResources? resources = await ReadSessionResourcesAsync(sid, queries, cancellationToken)
-            .ConfigureAwait(false);
+        long sqlMs = 0;
+        long locksMs = 0;
 
-        return new SessionDetail
+        try
         {
-            Sid = sid,
-            CurrentSql = sql,
-            CurrentSqlTruncated = truncated,
-            LocksHeld = locks,
-            Waits = knownWaits.Where(w => w.WaiterSid == sid || w.HolderSid == sid).ToArray(),
-            Resources = resources,
-            Queries = queries,
-        };
+            (string? sql, bool truncated) = await ReadCurrentSqlAsync(sid, queries, cancellationToken)
+                .ConfigureAwait(false);
+
+            sqlMs = elapsed.ElapsedMilliseconds;
+
+            IReadOnlyList<LockInfo> locks = await ReadLocksHeldAsync(sid, queries, cancellationToken)
+                .ConfigureAwait(false);
+
+            locksMs = elapsed.ElapsedMilliseconds;
+
+            SessionResources? resources = await ReadSessionResourcesAsync(sid, queries, cancellationToken)
+                .ConfigureAwait(false);
+
+            return new SessionDetail
+            {
+                Sid = sid,
+                CurrentSql = sql,
+                CurrentSqlTruncated = truncated,
+                LocksHeld = locks,
+                Waits = knownWaits.Where(w => w.WaiterSid == sid || w.HolderSid == sid).ToArray(),
+                Resources = resources,
+                Queries = queries,
+            };
+        }
+        finally
+        {
+            _logger.LogInformation(
+                "Session {Sid} detail read finished in {TotalMs} ms — current SQL {SqlMs} ms, "
+                + "locks {LocksMs} ms, resources {ResourcesMs} ms.",
+                sid,
+                elapsed.ElapsedMilliseconds,
+                sqlMs,
+                locksMs - sqlMs,
+                elapsed.ElapsedMilliseconds - locksMs);
+        }
     }
 
     private async Task<(string? Sql, bool Truncated)> ReadCurrentSqlAsync(
@@ -746,28 +792,45 @@ public sealed partial class InformixCatalogReader
 
         List<ServerQuery> queries = [];
 
-        (string? mode, string? rawMode, DateTimeOffset? booted) =
-            await ReadServerStateAsync(queries, cancellationToken).ConfigureAwait(false);
+        // The third read on tab open, so it is part of the wait before anything appears even
+        // though the strip it fills is only a Should.
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
 
-        (double? read, double? write) = await ReadCacheRatiosAsync(queries, cancellationToken)
-            .ConfigureAwait(false);
+        _logger.LogInformation("Instance indicators read started.");
 
-        DateTimeOffset? checkpoint = await ReadLastCheckpointAsync(queries, cancellationToken)
-            .ConfigureAwait(false);
-
-        int? sessions = await ReadSessionCountAsync(queries, cancellationToken).ConfigureAwait(false);
-
-        return new InstanceIndicators
+        try
         {
-            Mode = mode,
-            RawMode = rawMode,
-            Uptime = booted is { } boot ? DateTimeOffset.Now - boot : null,
-            SessionCount = sessions,
-            ReadCachePercent = read,
-            WriteCachePercent = write,
-            LastCheckpoint = checkpoint,
-            Queries = queries,
-        };
+            (string? mode, string? rawMode, DateTimeOffset? booted) =
+                await ReadServerStateAsync(queries, cancellationToken).ConfigureAwait(false);
+
+            (double? read, double? write) = await ReadCacheRatiosAsync(queries, cancellationToken)
+                .ConfigureAwait(false);
+
+            DateTimeOffset? checkpoint = await ReadLastCheckpointAsync(queries, cancellationToken)
+                .ConfigureAwait(false);
+
+            int? sessions = await ReadSessionCountAsync(queries, cancellationToken)
+                .ConfigureAwait(false);
+
+            return new InstanceIndicators
+            {
+                Mode = mode,
+                RawMode = rawMode,
+                Uptime = booted is { } boot ? DateTimeOffset.Now - boot : null,
+                SessionCount = sessions,
+                ReadCachePercent = read,
+                WriteCachePercent = write,
+                LastCheckpoint = checkpoint,
+                Queries = queries,
+            };
+        }
+        finally
+        {
+            _logger.LogInformation(
+                "Instance indicators read finished in {TotalMs} ms across {QueryCount} quer(ies).",
+                elapsed.ElapsedMilliseconds,
+                queries.Count);
+        }
     }
 
     private async Task<(string? Mode, string? RawMode, DateTimeOffset? Booted)> ReadServerStateAsync(

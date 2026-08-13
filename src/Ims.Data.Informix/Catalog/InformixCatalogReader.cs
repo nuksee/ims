@@ -938,17 +938,75 @@ public sealed partial class InformixCatalogReader : ICatalogReader, ISessionMoni
             command.Parameters.AddWithValue(string.Empty, parameter ?? DBNull.Value);
         }
 
-        using OdbcDataReader reader = (OdbcDataReader)await command
-            .ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
+        // Execute and fetch are timed separately, because only the first is what CommandTimeout
+        // governs. A statement that reports a 10-second timeout after 57 seconds of wall clock
+        // has spent the difference somewhere else — queued behind the semaphore this connection
+        // shares, or inside the driver before the cap starts counting — and one number for the
+        // whole call cannot tell those apart.
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
 
-        var items = new List<T>();
-
-        while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        try
         {
-            items.Add(map(reader));
-        }
+            using OdbcDataReader reader = (OdbcDataReader)await command
+                .ExecuteReaderAsync(cancellationToken).ConfigureAwait(false);
 
-        return items;
+            long executeMs = elapsed.ElapsedMilliseconds;
+
+            var items = new List<T>();
+
+            while (await reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                items.Add(map(reader));
+            }
+
+            // Information for the session monitor's queries, Debug for the catalogue's. The
+            // minimum level is Information (App.xaml.cs), so a Debug line here would never be
+            // written — and the session timings are the ones there is an open question about.
+            // Tree expansion runs a great many catalogue queries and would drown the log, so
+            // those stay at Debug where they can be turned up if ever needed.
+            //
+            // Distinguished by the timeout, which the session monitor sets to its own shorter
+            // value. That is a slightly indirect test, but it beats threading a "who is asking"
+            // flag through every call site to say something the argument already implies.
+            bool isSessionQuery = timeoutSeconds != CatalogTimeoutSeconds;
+
+            if (isSessionQuery)
+            {
+                _logger.LogInformation(
+                    "Query took {ExecuteMs} ms to execute and {FetchMs} ms to fetch {Rows} "
+                    + "row(s), cap {Timeout}s: {Sql}",
+                    executeMs,
+                    elapsed.ElapsedMilliseconds - executeMs,
+                    items.Count,
+                    timeoutSeconds,
+                    Redaction.Sql(sql));
+            }
+            else
+            {
+                _logger.LogDebug(
+                    "Query took {ExecuteMs} ms to execute and {FetchMs} ms to fetch {Rows} "
+                    + "row(s), cap {Timeout}s: {Sql}",
+                    executeMs,
+                    elapsed.ElapsedMilliseconds - executeMs,
+                    items.Count,
+                    timeoutSeconds,
+                    Redaction.Sql(sql));
+            }
+
+            return items;
+        }
+        catch (OdbcException)
+        {
+            // The failure timing is the interesting one for the 57-second question, so it is
+            // recorded at Information rather than left to the caller's summary.
+            _logger.LogInformation(
+                "Query failed after {ElapsedMs} ms against a {Timeout}s cap: {Sql}",
+                elapsed.ElapsedMilliseconds,
+                timeoutSeconds,
+                Redaction.Sql(sql));
+
+            throw;
+        }
     }
 
     private static string? GetString(OdbcDataReader reader, int ordinal) =>
