@@ -390,8 +390,15 @@
             <StackPanel Orientation="Horizontal">
               <TextBlock Text="⏳" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center" />
               <StackPanel>
-                <TextBlock Text="Reading sessions from sysmaster…" FontWeight="SemiBold"
-                           AutomationProperties.Name="Reading sessions" />
+                <StackPanel Orientation="Horizontal">
+                  <TextBlock Text="Reading sessions from sysmaster…" FontWeight="SemiBold"
+                             AutomationProperties.Name="Reading sessions" />
+                  <!-- Counting up, because IMS knows how long it has waited and not how much
+                       longer it will. -->
+                  <TextBlock Text="{Binding ElapsedLabel}" FontWeight="SemiBold"
+                             Margin="8,0,0,0" Foreground="#FF5F6368"
+                             AutomationProperties.Name="Time spent reading" />
+                </StackPanel>
                 <TextBlock Text="{Binding SlowReadNotice}"
                            Foreground="#FF5F6368" TextWrapping="Wrap" MaxWidth="420"
                            Visibility="{Binding SlowReadNotice,
@@ -423,6 +430,14 @@
                        Visibility="{Binding IsReadingDetail,
                                     Converter={StaticResource BoolToVisibility}}"
                        AutomationProperties.Name="Reading session detail" />
+
+            <!-- What that click cost, kept after it finishes: this is the read the user pays for
+                 every time they move down the list. -->
+            <TextBlock Foreground="#FF5F6368" Margin="0,6,0,0"
+                       Text="{Binding DetailReadLabel, StringFormat='Detail read in {0}'}"
+                       Visibility="{Binding HasDetailReadLabel,
+                                    Converter={StaticResource BoolToVisibility}}"
+                       AutomationProperties.Name="Time taken to read the detail" />
 
             <TextBlock Text="Select a session to see its locks and what it is running."
                        Foreground="#FF5F6368" Margin="0,6,0,0"

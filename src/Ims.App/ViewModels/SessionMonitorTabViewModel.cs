@@ -104,10 +104,26 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
     [ObservableProperty]
     private bool _isReadingDetail;
 
+    /// <summary>
+    /// How long the selected session's detail took to read.
+    /// </summary>
+    /// <remarks>
+    /// Shown separately from the list's timing because it is the cost paid per click, so it is
+    /// the one that decides whether browsing the list is pleasant or not.
+    /// </remarks>
+    [ObservableProperty]
+    private string? _detailReadLabel;
+
     [ObservableProperty]
     private string? _notice;
 
     private SessionSnapshot? _snapshot;
+
+    /// <summary>Running while a read is in flight, null otherwise. Drives the count-up.</summary>
+    private System.Diagnostics.Stopwatch? _reading;
+
+    /// <summary>How long the last completed read took, kept so the label can say so.</summary>
+    private TimeSpan? _lastReadDuration;
 
     public SessionMonitorTabViewModel(
         ConnectionDescriptor descriptor,
@@ -156,8 +172,37 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
     /// read is not decoration: a stale session list is exactly as misleading as a wrong one.
     /// </remarks>
     public string ReadAtLabel => _snapshot is { } snap
-        ? $"Read at {snap.ReadAt:HH:mm:ss}"
+        ? $"Read at {snap.ReadAt:HH:mm:ss}{Took}"
         : "Not read yet";
+
+    /// <summary>
+    /// How long the last read took, appended to the timestamp.
+    /// </summary>
+    /// <remarks>
+    /// Shown because on this estate it is the number that explains the experience: a refresh that
+    /// spent fifty seconds reaching a timeout and one that answered in half a second look
+    /// identical once they are over, and only one of them means the instance is worth watching
+    /// this way. Seconds once past a second — millisecond precision on a fifty-second wait is
+    /// noise.
+    /// </remarks>
+    private string Took =>
+        _lastReadDuration is { } d ? $" · took {Describe(d)}" : string.Empty;
+
+    /// <summary>
+    /// How long the read in flight has been running, counted up while it runs.
+    /// </summary>
+    /// <remarks>
+    /// A count-up rather than a progress bar, because IMS does not know how far along it is and
+    /// cannot even stop the statement — <c>Cancel()</c> does not reach this server. What it can
+    /// honestly show is how long the user has been waiting, which is what they need to decide
+    /// whether to keep waiting.
+    /// </remarks>
+    public string ElapsedLabel => _reading is { } running
+        ? $"{running.Elapsed.TotalSeconds:N0}s"
+        : string.Empty;
+
+    /// <summary>True when there is a detail timing worth showing.</summary>
+    public bool HasDetailReadLabel => !string.IsNullOrEmpty(DetailReadLabel);
 
     /// <summary>How much IMS could establish about blocking (PR-5.3).</summary>
     public LockWaitFidelity Fidelity => _snapshot?.Fidelity ?? LockWaitFidelity.Unknown;
@@ -396,11 +441,13 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
 
         IsReading = true;
         SlowReadNotice = null;
+        _reading = System.Diagnostics.Stopwatch.StartNew();
 
         // Explains itself if it outlasts the threshold, and says nothing if it does not. The
         // timer is discarded either way, so a fast read costs one cancellation.
         using var slow = new CancellationTokenSource();
         _ = AnnounceIfSlowAsync(slow.Token);
+        _ = CountUpAsync(slow.Token);
 
         try
         {
@@ -423,8 +470,42 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
         finally
         {
             await slow.CancelAsync().ConfigureAwait(true);
+
+            // Kept before the stopwatch is dropped, so the label can say how long it took after
+            // the fact — which is the number that explains the experience once the wait is over.
+            _lastReadDuration = _reading?.Elapsed;
+            _reading = null;
+
             IsReading = false;
             SlowReadNotice = null;
+
+            OnPropertyChanged(nameof(ElapsedLabel));
+            OnPropertyChanged(nameof(ReadAtLabel));
+        }
+    }
+
+    /// <summary>
+    /// Raises <see cref="ElapsedLabel"/> once a second while a read is in flight.
+    /// </summary>
+    /// <remarks>
+    /// A count-up is honest in a way a progress bar is not: IMS does not know how far along the
+    /// server is, and it cannot stop it either, since <c>Cancel()</c> does not reach it. Once a
+    /// second rather than more often — this is a number someone glances at to decide whether to
+    /// keep waiting, not an animation.
+    /// </remarks>
+    private async Task CountUpAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(true);
+                OnPropertyChanged(nameof(ElapsedLabel));
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The read finished, which is the ordinary way out of this loop.
         }
     }
 
@@ -573,6 +654,9 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
     partial void OnIsReadingDetailChanged(bool value) =>
         OnPropertyChanged(nameof(ShowSelectSessionPrompt));
 
+    partial void OnDetailReadLabelChanged(string? value) =>
+        OnPropertyChanged(nameof(HasDetailReadLabel));
+
     /// <summary>
     /// Reads the selected session's detail (PR-5.2).
     /// </summary>
@@ -584,6 +668,7 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
     partial void OnSelectedSessionChanged(SessionRowViewModel? value)
     {
         Detail = null;
+        DetailReadLabel = null;
         OnPropertyChanged(nameof(DetailQueries));
         OnPropertyChanged(nameof(QueryText));
         OnPropertyChanged(nameof(ShowSelectSessionPrompt));
@@ -600,6 +685,8 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
     private async Task ReadDetailAsync(int sid)
     {
         IsReadingDetail = true;
+
+        var elapsed = System.Diagnostics.Stopwatch.StartNew();
 
         try
         {
@@ -636,9 +723,19 @@ public sealed partial class SessionMonitorTabViewModel : ObservableObject, ITabV
             if (SelectedSession?.Sid == sid)
             {
                 IsReadingDetail = false;
+                DetailReadLabel = Describe(elapsed.Elapsed);
             }
         }
     }
+
+    /// <summary>A duration in the units it deserves.</summary>
+    /// <remarks>
+    /// Millisecond precision on a fifty-second wait is noise, and second precision on a
+    /// half-second read says "0 s", which reads as broken.
+    /// </remarks>
+    private static string Describe(TimeSpan duration) => duration.TotalSeconds < 1
+        ? $"{duration.TotalMilliseconds:N0} ms"
+        : $"{duration.TotalSeconds:N1} s";
 
     private void RaiseRefreshState()
     {
