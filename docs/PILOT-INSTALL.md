@@ -1,7 +1,8 @@
 # IMS pilot — installing and what to expect
 
-Informix Management Studio, pilot build `v0.2.0-pilot`. One window in which to connect to an
-Informix server, write and run SQL, read results, and browse the schema.
+Informix Management Studio, pilot build `v0.3.0-pilot`. One window in which to connect to an
+Informix server, write and run SQL, read results, browse the schema, and see who else is
+connected.
 
 This is a pilot, not a release. It is worth your time, and there are three things you need to
 know before you point it at anything. They are at the top rather than the bottom on purpose.
@@ -99,12 +100,40 @@ Worth knowing:
 - IMS can do nothing your own Informix privileges do not already allow. It sends no
   administrative commands of its own.
 
+## Seeing who else is connected
+
+New in this build. **Sessions → Session monitor**, or Ctrl+Alt+S, or the pulse button on the
+toolbar. It lists who is connected, from where, with what program, and what state each session
+is in. Your own sessions are marked `YOU`. Sort any column, type in the filter box to narrow it,
+and hide the server's own sessions with the checkbox.
+
+It refreshes when you ask it to, not on a timer — pick an interval from the dropdown if you want
+one, and it stops as soon as you switch to another tab. Nothing is queried while you are not
+looking at it.
+
+Select a session and press **Load detail** to see its locks. That is deliberate: it costs three
+queries, so it happens when you ask rather than every time you move down the list.
+
+**One warning, and it is the feature you probably wanted.** Reading locks needs
+`sysmaster:syslocks`, and on our UAT server every attempt to read it takes longer than the ten
+seconds IMS allows — so "who is blocking me" usually comes back as *unknown*. This is not
+something IMS can fix by waiting longer: cancel does not reach the server, so a longer wait just
+means a longer statement nobody can stop. When you need the answer:
+
+```
+onstat -g lok                 # locks and who is waiting
+onstat -g sql <sid>           # what a session is running
+```
+
+The monitor shows you every query it sent, and the `onstat` equivalent beside each one, under
+"Queries behind this pane". Two more gaps you will notice: the **current statement** per session
+needs a `SELECT` grant on `syssqlcurses` that ordinary accounts do not have, and **memory per
+session** is switched off because the column names have not been confirmed.
+
 ## What is missing
 
 Not bugs — not built yet:
 
-- **Session monitoring.** No way to see who is connected or what is blocking you. That is the
-  next slice.
 - **Filtering inside the result grid.** Sorting works; filtering does not.
 - **User-defined types** are absent from the object tree. Everything else lists.
 - **Encrypted connections** are unverified. Please assume they do not work.
