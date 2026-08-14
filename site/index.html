@@ -274,6 +274,11 @@ a { color: var(--color-accent); }
   color: var(--color-neutral);
   max-width: 62ch;
 }
+/* A narrow crop rather than a full window. Capped at its own pixel width so it
+   is never upscaled past 1:1 — a soft, stretched toolbar would read as a
+   mock-up, which is the one thing a real screenshot is here to avoid. */
+.shot--strip { margin-top: var(--space-2xl); }
+.shot--strip img { max-width: 875px; }
 
 /* =======================================================================
    F4 · Step sequence. The four v1 capabilities as the sequence they are.
@@ -474,6 +479,8 @@ pre code { background: none; padding: 0; font-size: 1em; }
   <div class="status shell">
     <span><b>Status</b> pilot</span>
     <span class="dot" aria-hidden="true">·</span>
+    <span><b>Latest</b> v0.3.0-pilot</span>
+    <span class="dot" aria-hidden="true">·</span>
     <span><b>Tested against</b> Informix 14.10</span>
     <span class="dot" aria-hidden="true">·</span>
     <span><b>Licence</b> Apache-2.0</span>
@@ -514,6 +521,19 @@ pre code { background: none; padding: 0; font-size: 1em; }
         Connections and objects on the left, editor and results on the right. The toolbar above the
         editor carries the query actions, and greys out the ones that need a connection. The status
         bar carries the Client SDK version and what you are connected to.
+      </figcaption>
+    </figure>
+
+    <figure class="shot shot--strip">
+      <img src="img/Screenshot02.png" width="875" height="179"
+           loading="lazy" decoding="async"
+           alt="The query toolbar with no connection open: the target reads Not connected, and Execute, Commit and Roll back are greyed out. The session monitor button is hovered, showing the tooltip “Session monitor — who is connected and what is blocked (Ctrl+Alt+S)”.">
+      <figcaption>
+        The session monitor opens from the toolbar, the Sessions menu or
+        <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd>. Every button says what it does and names its
+        gesture, and the ones that need a connection are greyed out until there is one — here the
+        target reads <em>Not connected</em>, so Execute, Commit and Roll back are unavailable rather
+        than silently inert.
       </figcaption>
     </figure>
   </section>
@@ -578,16 +598,31 @@ pre code { background: none; padding: 0; font-size: 1em; }
         </div>
       </li>
 
-      <li class="stage stage--todo">
+      <li class="stage">
         <span class="stage__no" aria-hidden="true">4.0</span>
         <div>
           <h3 class="stage__title">Monitor.</h3>
           <p class="stage__body">
-            A read-only view drawn from <code>sysmaster</code> — sessions, what they are running, and
-            what they are waiting on. It answers “what is holding this up” without a shell on the
-            database host. Strictly read-only: IMS does not offer to kill a session.
+            A read-only view drawn from <code>sysmaster</code>, one tab per instance. It lists who is
+            connected — session id, user, originating host, application, state, connection time —
+            sorts and filters on any column at once, and marks your own sessions with the word
+            <code>YOU</code> rather than a colour. Beside it, instance indicators: mode, uptime,
+            session count, read and write cache efficiency, checkpoint recency. Each figure is read
+            by its own query, so one absent object costs one figure and reads <code>Unknown</code>
+            rather than blank.
           </p>
-          <span class="stage__state">Not started · planned for v1, no code yet</span>
+          <p class="stage__body">
+            Refresh is manual by default; an optional interval is floored at five seconds, and
+            nothing is queried while the tab is closed or sitting behind another tab. Every query is
+            on show with the <code>onstat</code> command that answers the same question beside it —
+            including the ones that failed, with the server's reason, and the ones IMS decided not
+            to send. Take the block to an editor tab with one button and run it yourself.
+          </p>
+          <p class="stage__body">
+            Strictly read-only: IMS does not offer to kill a session. Blocked-session identification
+            is built but returns <code>Unknown</code> on a busy instance — see below.
+          </p>
+          <span class="stage__state">Built in v0.3.0 · <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>S</kbd> · blocking answer limited, see below</span>
         </div>
       </li>
 
@@ -596,7 +631,7 @@ pre code { background: none; padding: 0; font-size: 1em; }
 
   <section class="band shell" id="pilot">
     <div class="caution">
-      <h2>Two gaps to know before you rely on it</h2>
+      <h2>Three gaps to know before you rely on it</h2>
       <dl>
         <dt>Cancelling stops the waiting, not the statement.</dt>
         <dd>
@@ -607,6 +642,21 @@ pre code { background: none; padding: 0; font-size: 1em; }
           <code>FIRST</code> or a restrictive <code>WHERE</code>, rather than relying on cancelling
           it afterwards.
         </dd>
+        <dt>The monitor cannot tell you who is blocking whom on a busy instance.</dt>
+        <dd>
+          Measured against 14.10 as an ordinary developer account: every read of
+          <code>sysmaster:syslocks</code> exceeds a ten-second cap — a self-join and a plain single
+          scan alike. <code>syslocks</code> is synthesised from shared memory across every lock in
+          the server, so on a busy one it costs more than the whole budget whatever the query asks
+          for. The resolver, the grading and the chain logic are built and unit-tested, and the UI
+          says the source timed out rather than claiming the server does not expose it — but the
+          answer you opened it for reads <code>Unknown</code>. Use <code>onstat -g lok</code>.
+          Raising the cap is not the fix: since cancel does not reach the server, a longer cap means
+          a longer unstoppable statement holding a connection. Two more per-session figures are
+          absent for the same kind of reason — the current statement needs <code>SELECT</code> on
+          <code>syssqlcurses</code>, which an ordinary account does not have, and temporary space is
+          not derivable from what IMS reads.
+        </dd>
         <dt>User-defined types are missing from the object tree.</dt>
         <dd>
           Descoped rather than diagnosed. Everything else lists correctly.
@@ -615,7 +665,9 @@ pre code { background: none; padding: 0; font-size: 1em; }
       <p style="margin-top: var(--space-lg)">
         Unsupported, provided as-is, and not a replacement for the Informix CLI.
         <a href="https://github.com/nuksee/ims/blob/main/docs/IMPLEMENTATION-TODO.md">IMPLEMENTATION-TODO.md</a>
-        records exactly what is and isn't built, item by item.
+        records exactly what is and isn't built, item by item, and the
+        <a href="https://github.com/nuksee/ims/blob/main/docs/releaseChangelogs/CHANGELOG.md">changelog</a>
+        carries the standing limits of every build so far.
       </p>
     </div>
   </section>
@@ -697,6 +749,7 @@ dotnet run     --project src/Ims.App</code></pre>
       <a href="https://github.com/nuksee/ims/issues">issues</a> ·
       <a href="help/">manual</a> ·
       <a href="https://github.com/nuksee/ims/releases">releases</a> ·
+      <a href="https://github.com/nuksee/ims/blob/main/docs/releaseChangelogs/CHANGELOG.md">changelog</a> ·
       <a href="https://github.com/nuksee/ims/blob/main/LICENSE">Apache License 2.0</a>,
       copyright 2026 Kaveh Shahbazi · Set in Space Grotesk, Inter Tight and JetBrains Mono,
       self-hosted under the SIL Open Font License · The IBM Informix Client SDK is not covered by
