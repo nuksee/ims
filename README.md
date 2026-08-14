@@ -99,6 +99,8 @@ wrong and how to fix it, rather than failing later as an unexplained connection 
 written to `%LOCALAPPDATA%\IMS\logs`, with credentials and result data redacted at the logging
 provider boundary.
 
+<img width="784" height="517" alt="image" src="https://github.com/user-attachments/assets/c0919b45-2351-4b00-a61f-3e0595402a56" />
+
 ## Packaging the pilot build
 
 ```powershell
