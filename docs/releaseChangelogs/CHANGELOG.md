@@ -13,6 +13,20 @@ cancel does not stop the statement, 14.10 only, scale unmeasured, encrypted
 connections unverified, PR-6.2 unaudited. They are spelled out under
 [Known limits](#known-limits).
 
+## Unreleased
+
+### Added
+
+- **Per-connection client and database locale** ([#1](https://github.com/nuksee/ims/issues/1)).
+  The connection dialog has a *Locale* section with *Client locale* and *DB locale*,
+  sent as `CLIENT_LOCALE` and `DB_LOCALE`. Both are optional; blank keeps the
+  machine's Informix defaults, as before. A malformed name is caught in the dialog.
+
+### Fixed
+
+- Editing a connection no longer resets settings the dialog does not show (its
+  locales until now, and the connect timeout) to their defaults.
+
 ## v0.3.0-pilot — 2026-08-13
 
 A session monitor. The minor goes up because this adds capability — but read

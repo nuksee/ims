@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Connection"
-        Height="560" Width="520"
+        Height="660" Width="520"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         ShowInTaskbar="False">
@@ -85,7 +85,7 @@
           </Grid>
         </GroupBox>
 
-        <GroupBox Header="Authentication" Padding="8">
+        <GroupBox Header="Authentication" Padding="8" Margin="0,0,0,10">
           <Grid>
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="130" />
@@ -110,6 +110,40 @@
             <TextBlock Grid.Row="3" Grid.Column="1" TextWrapping="Wrap" Margin="0,6,0,0"
                        Foreground="#FF5F6368"
                        Text="Stored in Windows Credential Manager, never in a file IMS writes. Leave blank to be asked at connect time." />
+          </Grid>
+        </GroupBox>
+
+        <!--
+          NFR-9. Both are optional: blank leaves the CSDK default (Setnet32 /
+          the environment) in charge, which is the behaviour before these fields
+          existed. Editable combo boxes, because the list is a set of suggestions
+          rather than the locales this machine actually has installed.
+        -->
+        <GroupBox Header="Locale (optional)" Padding="8">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="130" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+              <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <Label Grid.Row="0" Grid.Column="0" Content="Client l_ocale" Target="{Binding ElementName=ClientLocaleBox}" />
+            <ComboBox Grid.Row="0" Grid.Column="1" x:Name="ClientLocaleBox" Margin="0,2"
+                      IsEditable="True" IsTextSearchEnabled="False"
+                      AutomationProperties.HelpText="CLIENT_LOCALE for this connection, for example en_US.CP1252. Leave blank for the client default." />
+
+            <Label Grid.Row="1" Grid.Column="0" Content="DB loc_ale" Target="{Binding ElementName=DatabaseLocaleBox}" />
+            <ComboBox Grid.Row="1" Grid.Column="1" x:Name="DatabaseLocaleBox" Margin="0,2"
+                      IsEditable="True" IsTextSearchEnabled="False"
+                      AutomationProperties.HelpText="DB_LOCALE for this connection; must match the locale the database was created with. Leave blank for the client default." />
+
+            <TextBlock Grid.Row="2" Grid.Column="1" TextWrapping="Wrap" Margin="0,6,0,0"
+                       Foreground="#FF5F6368"
+                       Text="Sent as CLIENT_LOCALE and DB_LOCALE. Leave blank to use this machine's Informix defaults. DB locale must match the database's own locale." />
           </Grid>
         </GroupBox>
 

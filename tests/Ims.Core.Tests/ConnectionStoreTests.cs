@@ -62,6 +62,26 @@ public class ConnectionStoreTests : IDisposable
     }
 
     [Fact]
+    public void Round_trips_the_locales()
+    {
+        // Issue #1: locales are set per connection, so they must survive a restart.
+        var store = new ConnectionStore(_path);
+        ConnectionDescriptor descriptor = Descriptor() with
+        {
+            ClientLocale = "en_US.CP1252",
+            DatabaseLocale = "en_US.819",
+        };
+        store.AddOrUpdate(descriptor);
+        store.Save();
+
+        var reloaded = new ConnectionStore(_path);
+        reloaded.Load();
+
+        reloaded.Connections[0].ClientLocale.Should().Be("en_US.CP1252");
+        reloaded.Connections[0].DatabaseLocale.Should().Be("en_US.819");
+    }
+
+    [Fact]
     public void The_saved_file_contains_no_secret()
     {
         // PR-1.4 and DEC-9: "never in a plain-text or user-readable config file".
