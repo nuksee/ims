@@ -77,8 +77,9 @@ jobs:
           Get-Item $zip | Select-Object Name, Length
 
       - name: Create the release
-        # Marked pre-release while the README's status says pilot. The notes are
-        # the changelog, as for v0.3.0; the annotated tag remains the fuller record.
+        # A full release, not a pre-release, as v0.2.0 and v0.3.0 were: the -pilot
+        # suffix and the notes already say what it is. The notes are the changelog,
+        # as for v0.3.0; the annotated tag remains the fuller record.
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -86,5 +87,4 @@ jobs:
           gh release create $env:TAG $env:ZIP `
             --title "IMS $env:TAG" `
             --notes-file docs/releaseChangelogs/CHANGELOG.md `
-            --prerelease `
             --verify-tag
