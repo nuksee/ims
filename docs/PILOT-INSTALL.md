@@ -1,6 +1,6 @@
 # IMS pilot — installing and what to expect
 
-Informix Management Studio, pilot build `v0.3.0-pilot`. One window in which to connect to an
+Informix Management Studio, pilot build `v0.4.0-pilot`. One window in which to connect to an
 Informix server, write and run SQL, read results, browse the schema, and see who else is
 connected.
 
@@ -88,7 +88,9 @@ first that the copy you have is the one I sent.
 1. **Add a connection** — Connection ▸ New connection… You need the server name, host, port and your
    Informix credentials, the same ones `dbaccess` uses. Mark the environment honestly:
    Production, UAT or Development is shown on every tab, and it is there to stop you running
-   the right query against the wrong server.
+   the right query against the wrong server. If your databases are not in the machine's
+   default locale (a UTF-8 database, say), set **Client locale** and **DB locale** on the
+   connection; otherwise leave them blank.
 2. Your password goes into **Windows Credential Manager**, never into a file.
 3. **Connect**, then start typing. `Ctrl+Space` completes table and column names.
 4. **F5** runs the script; **Ctrl+Enter** runs just what you have selected.

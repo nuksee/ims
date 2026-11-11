@@ -45,7 +45,7 @@ screenshot, for anyone you would rather not send to a source repository. The
 `Ims.exe`. No installer and no administrator rights: the .NET runtime travels in the folder.
 The Client SDK below is still required and is not included.
 
-Releases are marked pre-release while the status above says pilot.
+Every release is a pilot build, named `vX.Y.Z-pilot`; the status above applies to all of them.
 
 ## Documentation
 
@@ -102,6 +102,15 @@ provider boundary.
 <img width="784" height="517" alt="image" src="https://github.com/user-attachments/assets/c0919b45-2351-4b00-a61f-3e0595402a56" />
 
 ## Packaging the pilot build
+
+Releases are cut by tag. Bump `<Version>` in [Directory.Build.props](Directory.Build.props) and
+write the changelog section, merge that, then push an annotated `vX.Y.Z-pilot` tag on `main`.
+[`.github/workflows/release.yml`](.github/workflows/release.yml) checks the tag against
+`<Version>`, builds and tests on Windows with the pinned SDK, publishes the pilot folder, and
+attaches `ims-vX.Y.Z-pilot-win-x64.zip` (with `PILOT-INSTALL.md` inside) to a release whose notes
+are the changelog.
+
+To build the same folder locally:
 
 ```powershell
 dotnet publish src/Ims.App/Ims.App.csproj -c Release -p:PublishProfile=Pilot
