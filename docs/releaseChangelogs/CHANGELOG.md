@@ -13,7 +13,14 @@ cancel does not stop the statement, 14.10 only, scale unmeasured, encrypted
 connections unverified, PR-6.2 unaudited. They are spelled out under
 [Known limits](#known-limits).
 
-## Unreleased
+## v0.4.0-pilot — 2026-11-11
+
+Client and database locale per connection. The minor goes up because this adds
+capability. Everything under [Known limits](#known-limits) still holds.
+
+This is also the first build published by CI rather than from the author's
+machine: pushing a `v*-pilot` tag builds and tests it on Windows with the pinned
+SDK and attaches the zip to the release.
 
 ### Added
 

@@ -1,0 +1,90 @@
+name: release
+
+# Builds the pilot folder and publishes it as a GitHub Release when a
+# vX.Y.Z-pilot tag is pushed.
+#
+# Done in CI rather than on a workstation for two reasons. The zip is then built
+# from the tagged commit and nothing else, so the About window's commit id is
+# true and never carries "+modified". And it is built with the SDK pinned in
+# global.json, on Windows (DEC-3), whoever happens to cut the tag.
+#
+# Like build.yml, nothing here connects to an Informix instance (PR-6.2, RSK-5),
+# and the Client SDK is not in the zip (DEC-10).
+
+on:
+  push:
+    tags: ['v*-pilot']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    env:
+      TAG: ${{ github.ref_name }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Check the tag matches the version
+        # Directory.Build.props says to bump <Version> when cutting a tag, or the
+        # About window contradicts the release it came from. Refuse rather than
+        # publish a v0.4.0 build that calls itself 0.3.0.
+        shell: pwsh
+        run: |
+          [xml]$props = Get-Content Directory.Build.props
+          $version = ($props.Project.PropertyGroup | Where-Object { $_.Version } | Select-Object -First 1).Version
+          $expected = "v$version-pilot"
+          if ($env:TAG -ne $expected) {
+            Write-Error "Tag $env:TAG does not match <Version>$version</Version> in Directory.Build.props (expected $expected)."
+            exit 1
+          }
+
+      - name: Restore
+        run: dotnet restore ims.sln
+
+      - name: Build
+        run: dotnet build ims.sln --configuration Release --no-restore
+
+      - name: Test
+        # A release is not published from a commit whose tests fail, even if
+        # build.yml was green when it merged.
+        run: dotnet test ims.sln --configuration Release --no-build
+
+      - name: Publish the pilot folder
+        run: dotnet publish src/Ims.App/Ims.App.csproj -c Release -p:PublishProfile=Pilot
+
+      - name: Zip
+        # PILOT-INSTALL.md travels inside the zip: the README says to hand the two
+        # over together, and a zip forwarded on its own should still carry it.
+        shell: pwsh
+        run: |
+          Copy-Item docs/PILOT-INSTALL.md publish/pilot/PILOT-INSTALL.md
+          $zip = "ims-$env:TAG-win-x64.zip"
+          Compress-Archive -Path publish/pilot/* -DestinationPath $zip
+          "ZIP=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Get-Item $zip | Select-Object Name, Length
+
+      - name: Create the release
+        # Marked pre-release while the README's status says pilot. The notes are
+        # the changelog, as for v0.3.0; the annotated tag remains the fuller record.
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:TAG $env:ZIP `
+            --title "IMS $env:TAG" `
+            --notes-file docs/releaseChangelogs/CHANGELOG.md `
+            --prerelease `
+            --verify-tag

@@ -103,6 +103,15 @@ provider boundary.
 
 ## Packaging the pilot build
 
+Releases are cut by tag. Bump `<Version>` in [Directory.Build.props](Directory.Build.props) and
+write the changelog section, merge that, then push an annotated `vX.Y.Z-pilot` tag on `main`.
+[`.github/workflows/release.yml`](.github/workflows/release.yml) checks the tag against
+`<Version>`, builds and tests on Windows with the pinned SDK, publishes the pilot folder, and
+attaches `ims-vX.Y.Z-pilot-win-x64.zip` (with `PILOT-INSTALL.md` inside) to a pre-release whose
+notes are the changelog.
+
+To build the same folder locally:
+
 ```powershell
 dotnet publish src/Ims.App/Ims.App.csproj -c Release -p:PublishProfile=Pilot
 ```
