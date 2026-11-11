@@ -119,6 +119,18 @@ public class InformixOdbcConnectionStringTests
     }
 
     [Fact]
+    public void Omits_the_locales_when_not_stated()
+    {
+        // A blank field must leave the CSDK default in charge, not send an empty
+        // DB_LOCALE= that the driver would try to load.
+        string connectionString = InformixOdbcConnectionString.Build(
+            Descriptor(), DriverName, password: null);
+
+        connectionString.Should().NotContain("DB_LOCALE");
+        connectionString.Should().NotContain("CLIENT_LOCALE");
+    }
+
+    [Fact]
     public void The_logging_form_carries_no_password()
     {
         // PR-6.3. A connection string is the value most likely to end up in an error

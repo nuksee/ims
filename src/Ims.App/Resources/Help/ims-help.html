@@ -134,7 +134,12 @@
   <tr><td><code>Protocol</code></td><td>Almost always <code>onsoctcp</code>.</td></tr>
   <tr><td><code>Database</code></td><td>The database to open. Naming one is required — this server refuses an empty value.</td></tr>
   <tr><td><code>Environment</code></td><td>Development, UAT or Production. Shown persistently beside the connection.</td></tr>
+  <tr><td><code>Client locale</code></td><td>Optional. Sent as <code>CLIENT_LOCALE</code>, for example <code>en_US.CP1252</code>. Blank uses this machine's Informix default.</td></tr>
+  <tr><td><code>DB locale</code></td><td>Optional. Sent as <code>DB_LOCALE</code>, and must match the locale the database was created with, for example <code>en_US.819</code> or <code>en_US.utf8</code>. Blank uses this machine's Informix default.</td></tr>
 </table>
+
+<h3>Locales</h3>
+<p>Each connection can carry its own client and database locale, so a UTF-8 database and an 8859-1 one can sit side by side in the instance list. Leave both blank and nothing changes: the defaults set on this machine (Setnet32 or the environment) apply as before. A mismatched DB locale is reported by the server when you connect, typically as error -23197; set it to the database's own locale. IMS checks only that a name is shaped like <code>language_territory.codeset</code> — whether that locale is installed is up to the Client SDK, which says so at connect time.</p>
 
 <h3>Mark the environment honestly</h3>
 <p>The environment label is shown next to the connection at all times, so a production connection cannot be mistaken for another. It changes nothing about how statements are sent — it exists purely so you can see, at a glance, what you are pointed at.</p>

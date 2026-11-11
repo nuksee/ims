@@ -13,13 +13,18 @@ public partial class ConnectionDialog : Window
 {
     private readonly WindowsCredentialStore _credentials;
     private readonly Guid _id;
+    private readonly ConnectionDescriptor? _existing;
 
     public ConnectionDialog(ConnectionDescriptor? existing, WindowsCredentialStore credentials)
     {
         _credentials = credentials ?? throw new ArgumentNullException(nameof(credentials));
         _id = existing?.Id ?? Guid.NewGuid();
+        _existing = existing;
 
         InitializeComponent();
+
+        ClientLocaleBox.ItemsSource = InformixLocale.CommonLocales;
+        DatabaseLocaleBox.ItemsSource = InformixLocale.CommonLocales;
 
         EnvironmentBox.ItemsSource = new[]
         {
@@ -54,6 +59,8 @@ public partial class ConnectionDialog : Window
         GroupBox2.Text = existing.Group ?? string.Empty;
         EnvironmentBox.SelectedItem = existing.Environment;
         AuthModeBox.SelectedItem = existing.AuthenticationMode;
+        ClientLocaleBox.Text = existing.ClientLocale ?? string.Empty;
+        DatabaseLocaleBox.Text = existing.DatabaseLocale ?? string.Empty;
     }
 
     /// <summary>The saved connection, once the dialog returns true.</summary>
@@ -67,7 +74,19 @@ public partial class ConnectionDialog : Window
             return;
         }
 
-        Result = new ConnectionDescriptor
+        // Start from the existing descriptor so that settings this dialog does not
+        // show (the connect timeout, for one) survive an edit rather than quietly
+        // resetting to their defaults.
+        ConnectionDescriptor template = _existing ?? new ConnectionDescriptor
+        {
+            Id = _id,
+            DisplayName = string.Empty,
+            ServerName = string.Empty,
+            Host = string.Empty,
+            Service = string.Empty,
+        };
+
+        Result = template with
         {
             Id = _id,
             DisplayName = DisplayNameBox.Text.Trim(),
@@ -82,6 +101,8 @@ public partial class ConnectionDialog : Window
                                                 ?? InformixEnvironment.Unspecified),
             AuthenticationMode = (InformixAuthenticationMode)(AuthModeBox.SelectedItem
                                                               ?? InformixAuthenticationMode.Local),
+            ClientLocale = Blank(ClientLocaleBox.Text),
+            DatabaseLocale = Blank(DatabaseLocaleBox.Text),
         };
 
         // DEC-9: the password goes to Windows Credential Manager and nowhere else.
@@ -152,6 +173,22 @@ public partial class ConnectionDialog : Window
             if (string.IsNullOrWhiteSpace(box.Text))
             {
                 problem = $"{label} is required.";
+                box.Focus();
+                return false;
+            }
+        }
+
+        foreach ((ComboBox box, string label) in ((ComboBox, string)[])
+                 [
+                     (ClientLocaleBox, "Client locale"),
+                     (DatabaseLocaleBox, "DB locale"),
+                 ])
+        {
+            if (!string.IsNullOrWhiteSpace(box.Text) && !InformixLocale.IsWellFormed(box.Text.Trim()))
+            {
+                problem = $"{label} '{box.Text.Trim()}' is not a locale name. "
+                          + "Use language_territory.codeset, for example en_US.819 or en_US.utf8, "
+                          + "or leave it blank for the client default.";
                 box.Focus();
                 return false;
             }
