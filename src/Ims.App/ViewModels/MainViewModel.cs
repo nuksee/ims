@@ -166,11 +166,25 @@ public sealed partial class MainViewModel : ObservableObject
 
         ConnectionDescriptor descriptor = item.Descriptor;
 
-        if (_sessions.TryGetValue(descriptor.Id, out IInformixSession? existing)
-            && existing.State == SessionState.Open)
+        if (_sessions.TryGetValue(descriptor.Id, out IInformixSession? existing))
         {
-            NewTab(existing);
-            return;
+            if (existing.State == SessionState.Open)
+            {
+                NewTab(existing);
+                return;
+            }
+
+            // Broken or closed: retire it, so its tabs are unbound and adopt the new
+            // session below instead of running on against a dead connection.
+            existing.StateChanged -= OnSessionStateChanged;
+            _sessions.Remove(descriptor.Id);
+
+            foreach (EditorTabViewModel tab in EditorTabs.Where(t => ReferenceEquals(t.Session, existing)))
+            {
+                tab.Session = null;
+            }
+
+            await existing.DisposeAsync().ConfigureAwait(true);
         }
 
         StatusText = $"Connecting to {descriptor.TargetLabel}…";
