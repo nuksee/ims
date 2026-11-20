@@ -209,7 +209,18 @@ public sealed partial class EditorTabViewModel : ObservableObject, ITabViewModel
             foreach (ResultSetViewModel result in Results)
             {
                 await result.FetchMoreAsync(_execution.Token).ConfigureAwait(true);
+
+                // A statement that executed but failed while its rows were fetched
+                // is a failure, even though its outcome was recorded as a row set.
+                if (result.FetchError is not null)
+                {
+                    failed++;
+                }
             }
+
+            // A cancel during the fetch is absorbed by the result it interrupted; this
+            // routes it to the same reporting as a cancel during execution.
+            _execution.Token.ThrowIfCancellationRequested();
 
             stopwatch.Stop();
 

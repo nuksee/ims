@@ -88,8 +88,37 @@ internal sealed class OdbcStatementResult : IStatementResult
         // the UI, which is exactly the NFR-1 failure the guard exists to prevent.
         ServerCallGuard.AssertNotOnUiThread("Read result rows");
 
-        while (await _reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+        while (await ReadNextRowAsync(cancellationToken).ConfigureAwait(false) is { } row)
         {
+            RowsRead++;
+            yield return row;
+        }
+
+        IsComplete = true;
+    }
+
+    /// <summary>
+    /// Fetches and decodes the next row, or returns null at the end of the set.
+    /// </summary>
+    /// <remarks>
+    /// A statement can execute cleanly and still fail on a later row: Informix
+    /// evaluates the WHERE clause as it fetches, so comparing a CHAR column with a
+    /// number fails with SQLSTATE 22018 on the first row that does not convert. The
+    /// driver's exception is translated here so callers deal in
+    /// <see cref="InformixException"/>, as they do for a failed execute — a raw
+    /// <see cref="OdbcException"/> reached the dispatcher and crashed the app.
+    /// Separate from <see cref="ReadRowsAsync"/> because C# does not allow
+    /// <c>yield return</c> inside a <c>try</c> with a <c>catch</c>.
+    /// </remarks>
+    private async Task<InformixValue[]?> ReadNextRowAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            if (!await _reader.ReadAsync(cancellationToken).ConfigureAwait(false))
+            {
+                return null;
+            }
+
             var row = new InformixValue[Columns.Count];
 
             for (int i = 0; i < Columns.Count; i++)
@@ -118,11 +147,12 @@ internal sealed class OdbcStatementResult : IStatementResult
                 row[i] = InformixTypeMapper.ToInformixValue(column, _reader.GetValue(i));
             }
 
-            RowsRead++;
-            yield return row;
+            return row;
         }
-
-        IsComplete = true;
+        catch (OdbcException ex)
+        {
+            throw new InformixException(InformixErrorTranslator.Translate(ex), ex);
+        }
     }
 
     /// <summary>

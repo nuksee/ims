@@ -477,8 +477,15 @@ public sealed class InformixOdbcSession : IInformixSession
                 TransactionState = TransactionState,
             };
         }
-        catch (OdbcException ex)
+        catch (Exception caught)
+            when (caught is OdbcException or InformixException { InnerException: OdbcException })
         {
+            // Row reads raise InformixException wrapping the driver's exception, and an
+            // earlier statement in a script is read here, inside the execute. Translated
+            // again from the original so the statement index, offset and user-cancel
+            // flag are the ones only this method knows.
+            var ex = caught as OdbcException ?? (OdbcException)caught.InnerException!;
+
             stopwatch.Stop();
 
             InformixError error = InformixErrorTranslator.Translate(

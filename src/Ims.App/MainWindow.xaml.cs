@@ -935,6 +935,17 @@ public partial class MainWindow : Window
             MessageBox.Show(this, ex.Message, "Could not export",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
         }
+        catch (InformixException ex)
+        {
+            // The rows not yet on screen are fetched during the export, so the server
+            // can fail partway through it. The file is incomplete and must not pass as
+            // a full export.
+            _viewModel.StatusText = "Export failed: the server stopped the fetch.";
+            MessageBox.Show(this,
+                $"The export is incomplete: the server failed while sending the rows.\n\n{ex.Error}",
+                "Could not export",
+                MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void OnCopySelection(object sender, RoutedEventArgs e)
