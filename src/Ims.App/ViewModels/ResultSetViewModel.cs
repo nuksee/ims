@@ -54,6 +54,16 @@ public sealed partial class ResultSetViewModel : ObservableObject, IAsyncDisposa
     [ObservableProperty]
     private string _status = string.Empty;
 
+    /// <summary>
+    /// Why fetching stopped early, when the server failed partway through the rows.
+    /// </summary>
+    /// <remarks>
+    /// The statement itself executed, so its outcome says success; without this the
+    /// run would report no failures while the grid holds only part of the result.
+    /// </remarks>
+    [ObservableProperty]
+    private InformixError? _fetchError;
+
     public ResultSetViewModel(IStatementResult result, string sql, TimeSpan elapsed, int statementNumber)
     {
         _result = result ?? throw new ArgumentNullException(nameof(result));
@@ -146,6 +156,22 @@ public sealed partial class ResultSetViewModel : ObservableObject, IAsyncDisposa
         {
             HasMoreRows = false;
             Status = "Cancelled.";
+            return;
+        }
+        catch (InformixException ex) when (ex.Error.IsCancellation)
+        {
+            // A cancel during a fetch comes back from the driver as an error, not as
+            // OperationCanceledException.
+            HasMoreRows = false;
+            Status = "Cancelled.";
+            return;
+        }
+        catch (InformixException ex)
+        {
+            // The reader cannot continue past a failed fetch, so nothing more will come.
+            HasMoreRows = false;
+            FetchError = ex.Error;
+            Status = $"{Rows.Count:N0} rows fetched, then the server stopped the fetch — {ex.Error}";
             return;
         }
         finally
