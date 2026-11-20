@@ -512,6 +512,47 @@ public sealed class InformixOdbcSession : IInformixSession
                 TransactionState = TransactionState,
             };
         }
+        catch (InvalidOperationException ex)
+            when (ex is not UiThreadBlockedException and not ObjectDisposedException)
+        {
+            // System.Data.Odbc raises this, not OdbcException, when it cannot allocate a
+            // statement handle on the connection ("unable to allocate an environment
+            // handle", whatever the handle type) or finds the connection unusable. Both
+            // mean the connection is gone while OdbcConnection.State still says Open, so
+            // StateChange never fires and only this catch can report the drop (PR-1.7).
+            stopwatch.Stop();
+
+            var error = new InformixError
+            {
+                SqlCode = 0,
+                ServerMessage = ex.Message,
+                Explanation = "The ODBC driver could not use this connection; it has most likely "
+                              + "been dropped. Disconnect and reconnect — your editor contents "
+                              + "are safe.",
+                StatementIndex = index,
+                ScriptOffset = scriptOffset,
+                IsConnectionLost = true,
+            };
+
+            SetState(SessionState.Broken, error);
+
+            _logger.LogWarning(
+                "Statement {Index} could not run on {Target}: {Error}",
+                index,
+                Descriptor.TargetLabel,
+                error.ToString());
+
+            return new StatementOutcome
+            {
+                Index = index,
+                Sql = sql,
+                ScriptOffset = scriptOffset,
+                Kind = StatementResultKind.Failed,
+                Error = error,
+                Elapsed = stopwatch.Elapsed,
+                TransactionState = TransactionState,
+            };
+        }
         finally
         {
             _runningCommand = null;
