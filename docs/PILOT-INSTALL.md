@@ -1,6 +1,6 @@
 # IMS pilot — installing and what to expect
 
-Informix Management Studio, pilot build `v0.4.0-pilot`. One window in which to connect to an
+Informix Management Studio, pilot build `v0.4.1-pilot`. One window in which to connect to an
 Informix server, write and run SQL, read results, browse the schema, and see who else is
 connected.
 

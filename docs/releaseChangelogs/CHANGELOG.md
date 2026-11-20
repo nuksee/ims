@@ -13,6 +13,31 @@ cancel does not stop the statement, 14.10 only, scale unmeasured, encrypted
 connections unverified, PR-6.2 unaudited. They are spelled out under
 [Known limits](#known-limits).
 
+## v0.4.1-pilot — 2026-11-20
+
+Two crashes from pilot use, fixed. The patch goes up because this repairs the
+last build and adds nothing. Everything under [Known limits](#known-limits) still
+holds.
+
+### Fixed
+
+- **A dropped connection crashed every run, and reconnecting did not help**
+  ([#4](https://github.com/nuksee/ims/pull/4)). A connection left idle long
+  enough for the server or network to drop it still reported itself open, so the
+  next statement failed inside the ODBC driver with *unable to allocate an
+  environment handle* — an error IMS did not catch. The statement now fails
+  normally, the session is marked lost, and the status bar says to reconnect.
+  Connect now replaces a lost session rather than handing the same dead one
+  back, and the tabs that were using it move to the new one.
+- **A statement that failed partway through its rows crashed the application**
+  ([#5](https://github.com/nuksee/ims/pull/5)). Informix evaluates the `WHERE`
+  clause as rows are fetched, so a query can start cleanly and fail on a later
+  row — comparing a `CHAR` column with an unquoted number, for instance, fails
+  with SQLSTATE 22018 on the first value that is not numeric. The result tab now
+  keeps the rows already fetched, says the server stopped the fetch and why, and
+  the run counts as failed. Exporting such a result reports an incomplete file
+  instead of crashing.
+
 ## v0.4.0-pilot — 2026-11-11
 
 Client and database locale per connection. The minor goes up because this adds
